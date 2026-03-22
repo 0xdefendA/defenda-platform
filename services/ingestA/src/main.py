@@ -56,7 +56,16 @@ async def index(request: Request):
     if not utctimestamp:
         utctimestamp = datetime.now(timezone.utc).isoformat()
 
-    record = {"utctimestamp": utctimestamp, "details": json.dumps(enriched_event)}
+    record = {
+        "utctimestamp": utctimestamp,
+        "severity": enriched_event.get("severity", "INFO"),
+        "summary": enriched_event.get("summary", "UNKNOWN"),
+        "category": enriched_event.get("category", "UNKNOWN"),
+        "source": enriched_event.get("source", "UNKNOWN"),
+        "tags": enriched_event.get("tags", []),
+        "plugins": enriched_event.get("plugins", []),
+        "details": json.dumps(enriched_event.get("details", {})),
+    }
 
     errors = client.insert_rows_json(TABLE_REF, [record])
 
