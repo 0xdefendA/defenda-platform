@@ -17,5 +17,7 @@ COPY src/ ./src/
 ENV PORT 8080
 ENV PYTHONPATH=/app/src
 
+WORKDIR /app/src
+
 # Run the FastAPI application
-CMD /app/.venv/bin/uvicorn src.main:app --host 0.0.0.0 --port $PORT
+CMD /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port $PORT
