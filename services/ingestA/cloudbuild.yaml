@@ -1,0 +1,24 @@
+steps:
+  # Build the Docker image
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --platform=linux/amd64 # Specify platform to avoid exec format errors
+      - -t
+      - $_IMAGE
+      - .
+    dir: .
+
+  # Push the Docker image to Container Registry
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - $_IMAGE
+
+images:
+  - $_IMAGE
+
+
+options:
+ dynamic_substitutions: true
+ logging: CLOUD_LOGGING_ONLY

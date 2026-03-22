@@ -17,3 +17,8 @@ output "terraform_state_bucket_name" {
   description = "The name of the GCS bucket for Terraform state."
   value       = google_storage_bucket.terraform_state.name
 }
+
+output "project_number" {
+  description = "The project number of the GCP project."
+  value       = data.google_project.project.number
+}

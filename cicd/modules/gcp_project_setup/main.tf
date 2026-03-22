@@ -46,6 +46,10 @@ resource "google_project_service" "iam_api" {
   disable_on_destroy = false
 }
 
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
 resource "google_storage_bucket" "terraform_state" {
   project                     = var.project_id
   name                        = "${var.project_id}-tf-state"
@@ -56,7 +60,6 @@ resource "google_storage_bucket" "terraform_state" {
   versioning {
     enabled = true
   }
-
 
   depends_on = [
     google_project_service.storage_api # assuming storage_api is added
@@ -123,7 +126,11 @@ resource "google_cloud_run_v2_service" "ingestA_service" {
 
   template {
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
+      image = var.ingesta_image_name
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
     }
   }
 
@@ -313,4 +320,3 @@ provider "google-beta" {
   project = var.project_id
   region  = var.region
 }
-
