@@ -62,7 +62,7 @@ resource "google_storage_bucket" "terraform_state" {
   }
 
   depends_on = [
-    google_project_service.storage_api # assuming storage_api is added
+    google_project_service.storage_api
   ]
 }
 
@@ -118,78 +118,13 @@ resource "google_pubsub_topic" "defenda_event_ingest" {
   ]
 }
 
-# Cloud Run Services (Placeholders)
-resource "google_cloud_run_v2_service" "ingestA_service" {
-  project  = var.project_id
-  name     = "ingesta-service"
-  location = var.region
-
-  template {
-    containers {
-      image = var.ingesta_image_name
-      env {
-        name  = "PROJECT_ID"
-        value = var.project_id
-      }
-    }
-  }
-
-  traffic {
-    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
-    percent = 100
-  }
-  depends_on = [
-    google_project_service.run_api
-  ]
-}
-
-resource "google_cloud_run_v2_service" "alertA_service" {
-  project  = var.project_id
-  name     = "alerta-service"
-  location = var.region
-
-  template {
-    containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
-    }
-  }
-
-  traffic {
-    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
-    percent = 100
-  }
-  depends_on = [
-    google_project_service.run_api
-  ]
-}
-
-resource "google_cloud_run_v2_service" "respondA_service" {
-  project  = var.project_id
-  name     = "responda-service"
-  location = var.region
-
-  template {
-    containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
-    }
-  }
-
-  traffic {
-    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
-    percent = 100
-  }
-  depends_on = [
-    google_project_service.run_api
-  ]
-}
-
 # IAM for Cloud Run services
 resource "google_service_account" "ingesta_sa" {
   project      = var.project_id
   account_id   = "ingesta-sa"
   display_name = "ingestA Service Account"
   depends_on = [
-    google_project_service.iam_api # implicitly enabled by other services
+    google_project_service.iam_api
   ]
 }
 
@@ -199,28 +134,6 @@ resource "google_service_account" "alerta_sa" {
   display_name = "alertA Service Account"
   depends_on = [
     google_project_service.iam_api
-  ]
-}
-
-resource "google_cloud_run_v2_service_iam_member" "ingesta_invoker" {
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.ingestA_service.name
-  role     = "roles/run.invoker"
-  member   = "allUsers" # Allow unauthenticated invocation as per requirements
-  depends_on = [
-    google_cloud_run_v2_service.ingestA_service
-  ]
-}
-
-resource "google_cloud_run_v2_service_iam_member" "responda_invoker" {
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.respondA_service.name
-  role     = "roles/run.invoker"
-  member   = "allUsers" # Allow unauthenticated invocation as per requirements
-  depends_on = [
-    google_cloud_run_v2_service.respondA_service
   ]
 }
 
@@ -252,48 +165,6 @@ resource "google_project_iam_member" "alerta_datastore_user" {
   depends_on = [
     google_service_account.alerta_sa,
     google_firestore_database.database
-  ]
-}
-
-# Pub/Sub Push Subscription
-resource "google_pubsub_subscription" "defenda_event_ingest_sub" {
-  project = var.project_id
-  name    = "defenda-event-ingest-sub"
-  topic   = google_pubsub_topic.defenda_event_ingest.name
-
-  ack_deadline_seconds = 10
-
-  push_config {
-    push_endpoint = google_cloud_run_v2_service.ingestA_service.uri
-    oidc_token {
-      service_account_email = google_service_account.ingesta_sa.email
-    }
-  }
-  depends_on = [
-    google_pubsub_topic.defenda_event_ingest,
-    google_cloud_run_v2_service.ingestA_service,
-    google_service_account.ingesta_sa
-  ]
-}
-
-# Cloud Scheduler Job
-resource "google_cloud_scheduler_job" "trigger_alerta" {
-  project  = var.project_id
-  name     = "trigger-alerta"
-  region   = var.region
-  schedule = "* * * * *" # Every minute
-
-  http_target {
-    http_method = "GET"
-    uri         = google_cloud_run_v2_service.alertA_service.uri
-    oidc_token {
-      service_account_email = google_service_account.alerta_sa.email
-    }
-  }
-  depends_on = [
-    google_cloud_run_v2_service.alertA_service,
-    google_service_account.alerta_sa,
-    google_project_service.cloudscheduler_api
   ]
 }
 

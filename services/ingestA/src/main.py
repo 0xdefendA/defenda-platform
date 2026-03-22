@@ -8,7 +8,7 @@ from google.cloud import bigquery
 
 from normalization_plugins import run_normalization_plugins
 from enrichment_plugins import run_enrichment_plugins
-from utils.dotdict import dotdict
+from utils.dotdict import DotDict
 
 app = FastAPI()
 client = bigquery.Client()
@@ -41,7 +41,7 @@ async def index(request: Request):
         event = {"raw_log": "No data in Pub/Sub message"}
 
     # Convert event to dotdict for plugin compatibility
-    event_dotdict = dotdict(event)
+    event_dotdict = DotDict(event)
 
     # Run normalization plugins
     normalized_event, metadata = run_normalization_plugins(event_dotdict)
@@ -49,15 +49,14 @@ async def index(request: Request):
     # Run enrichment plugins
     enriched_event, metadata = run_enrichment_plugins(normalized_event, metadata)
 
+    from datetime import datetime, timezone
+
     # Prepare record for BigQuery
-    record = {
-        "utctimestamp": enriched_event.get(
-            "utctimestamp", "1970-01-01T00:00:00Z"
-        ),  # Default timestamp
-        "details": json.dumps(
-            enriched_event
-        ),  # Store the entire processed event as JSON
-    }
+    utctimestamp = enriched_event.get("utctimestamp")
+    if not utctimestamp:
+        utctimestamp = datetime.now(timezone.utc).isoformat()
+
+    record = {"utctimestamp": utctimestamp, "details": json.dumps(enriched_event)}
 
     errors = client.insert_rows_json(TABLE_REF, [record])
 

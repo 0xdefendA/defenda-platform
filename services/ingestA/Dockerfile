@@ -15,6 +15,7 @@ COPY src/ ./src/
 
 # Expose the port Cloud Run will listen on
 ENV PORT 8080
+ENV PYTHONPATH=/app/src
 
 # Run the FastAPI application
-CMD ["/app/.venv/bin/uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "$PORT"]
+CMD /app/.venv/bin/uvicorn src.main:app --host 0.0.0.0 --port $PORT

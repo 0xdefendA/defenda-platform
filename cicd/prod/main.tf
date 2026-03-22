@@ -11,9 +11,8 @@ provider "google-beta" {
 module "gcp_project_setup" {
   source = "../modules/gcp_project_setup"
 
-  project_id         = var.project_id
-  region             = var.region
-  ingesta_image_name = local.ingesta_image_name
+  project_id = var.project_id
+  region     = var.region
 }
 
 resource "google_project_service" "cloudbuild_api" {
@@ -31,30 +30,27 @@ resource "google_service_account" "cloudbuild_sa" {
 }
 
 # Grant permissions to the Service Account
-# We iterate over a list of roles so we don\"t repeat code blocks.
 resource "google_project_iam_member" "sa_roles" {
   for_each = toset([
-    "roles/run.admin",                          # Deploy Cloud Run services
-    "roles/iam.serviceAccountUser",             # Attach identities to Cloud Run services
-    "roles/storage.admin",                      # Manage GCS buckets, Read/Write Terraform state files
-    "roles/logging.logWriter",                  # Write build logs
-    "roles/cloudbuild.builds.editor",           # Cloud Build Editor role
-    "roles/cloudbuild.builds.builder",          # Cloud Build Builder role
-    "roles/resourcemanager.projectIamAdmin",    # Modify IAM policies (if TF manages IAM)
-    "roles/secretmanager.admin",                # Secret Manager
-    "roles/serviceusage.serviceUsageAdmin",     # Enable Cloud Build SA to list and enable APIs in the project.
-    "roles/developerconnect.readTokenAccessor", # enable terrafor to read tokens for cloudbuild triggers.
-    "roles/developerconnect.user",              # enable terraform to reference repos
-    "roles/iam.serviceAccountAdmin",            # manage service accounts
-    "roles/artifactregistry.admin",             # create and manage artifact registry repos
+    "roles/run.admin",
+    "roles/iam.serviceAccountUser",
+    "roles/storage.admin",
+    "roles/logging.logWriter",
+    "roles/cloudbuild.builds.editor",
+    "roles/cloudbuild.builds.builder",
+    "roles/resourcemanager.projectIamAdmin",
+    "roles/secretmanager.admin",
+    "roles/serviceusage.serviceUsageAdmin",
+    "roles/developerconnect.readTokenAccessor",
+    "roles/developerconnect.user",
+    "roles/iam.serviceAccountAdmin",
+    "roles/artifactregistry.admin",
   ])
 
   project = var.project_id
   role    = each.key
   member  = "serviceAccount:${google_service_account.cloudbuild_sa.email}"
-
 }
-
 
 # create a bucket for cloudbuild artifacts
 resource "google_storage_bucket" "cloudbuild_artifacts" {
@@ -101,13 +97,9 @@ locals {
   project_id     = var.project_id
   project_number = module.gcp_project_setup.project_number
   location       = var.region
-  service_name   = "ingesta-service"
-  cloudbuild_sa  = "serviceAccount:${google_service_account.cloudbuild_sa.email}"
   gar_repo_name  = "defenda-platform-repo"
 
   # generate a hash of the source files to use as image tag
-  # this ensures new image is built only when source changes
-  # and the cloud run service is updated accordingly
   ingesta_hash       = sha1(join("", [for f in fileset(path.root, "../../services/ingestA/**") : filesha1(f)]))
   ingesta_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/ingesta-service:${local.ingesta_hash}"
 }
@@ -116,9 +108,6 @@ resource "terraform_data" "ingesta_build" {
   input = local.ingesta_image_name # the image name with tag
 
   triggers_replace = [
-    # Only triggers when actual code changes
-    # use the hash as the image tag as well
-    # to ensure cloud run gets updated image
     local.ingesta_hash
   ]
 
@@ -126,7 +115,7 @@ resource "terraform_data" "ingesta_build" {
     command = <<EOT
         gcloud builds submit ../../services/ingestA \
           --config ../../services/ingestA/cloudbuild.yaml \
-          --substitutions=_IMAGE=${self.input} \
+          --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
           --service-account=${google_service_account.cloudbuild_sa.id} \
           --project=${local.project_id}
       EOT
@@ -136,6 +125,117 @@ resource "terraform_data" "ingesta_build" {
   }
   depends_on = [
     google_artifact_registry_repository.image-repo,
-    google_storage_bucket.cloudbuild_artifacts
+    google_storage_bucket.cloudbuild_artifacts,
+    google_project_service.cloudbuild_api,
+    google_project_iam_member.sa_roles
   ]
+}
+
+# --- Cloud Run Services ---
+
+resource "google_cloud_run_v2_service" "ingestA_service" {
+  project  = var.project_id
+  name     = "ingesta-service"
+  location = var.region
+
+  template {
+    service_account = module.gcp_project_setup.ingesta_sa_email
+    containers {
+      image = terraform_data.ingesta_build.output
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+    }
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+}
+
+resource "google_cloud_run_v2_service" "alertA_service" {
+  project  = var.project_id
+  name     = "alerta-service"
+  location = var.region
+
+  template {
+    service_account = module.gcp_project_setup.alerta_sa_email
+    containers {
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
+    }
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+}
+
+resource "google_cloud_run_v2_service" "respondA_service" {
+  project  = var.project_id
+  name     = "responda-service"
+  location = var.region
+
+  template {
+    containers {
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
+    }
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+}
+
+# --- Cloud Run IAM ---
+
+resource "google_cloud_run_v2_service_iam_member" "ingesta_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.ingestA_service.name
+  role     = "roles/run.invoker"
+  member   = "allUsers" # Allow unauthenticated invocation as per requirements
+}
+
+resource "google_cloud_run_v2_service_iam_member" "responda_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.respondA_service.name
+  role     = "roles/run.invoker"
+  member   = "allUsers" # Allow unauthenticated invocation as per requirements
+}
+
+# --- Triggers (Pub/Sub & Scheduler) ---
+
+resource "google_pubsub_subscription" "defenda_event_ingest_sub" {
+  project = var.project_id
+  name    = "defenda-event-ingest-sub"
+  topic   = module.gcp_project_setup.pubsub_topic_id
+
+  ack_deadline_seconds = 10
+
+  push_config {
+    push_endpoint = google_cloud_run_v2_service.ingestA_service.uri
+    oidc_token {
+      service_account_email = module.gcp_project_setup.ingesta_sa_email
+    }
+  }
+}
+
+resource "google_cloud_scheduler_job" "trigger_alerta" {
+  project  = var.project_id
+  name     = "trigger-alerta"
+  region   = var.region
+  schedule = "* * * * *" # Every minute
+
+  http_target {
+    http_method = "GET"
+    uri         = google_cloud_run_v2_service.alertA_service.uri
+    oidc_token {
+      service_account_email = module.gcp_project_setup.alerta_sa_email
+    }
+  }
 }
