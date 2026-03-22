@@ -84,6 +84,36 @@ resource "google_bigquery_table" "events" {
       "mode" : "REQUIRED"
     },
     {
+      "name" : "severity",
+      "type" : "STRING",
+      "mode" : "NULLABLE"
+    },
+    {
+      "name" : "summary",
+      "type" : "STRING",
+      "mode" : "NULLABLE"
+    },
+    {
+      "name" : "category",
+      "type" : "STRING",
+      "mode" : "NULLABLE"
+    },
+    {
+      "name" : "source",
+      "type" : "STRING",
+      "mode" : "NULLABLE"
+    },
+    {
+      "name" : "tags",
+      "type" : "STRING",
+      "mode" : "REPEATED"
+    },
+    {
+      "name" : "plugins",
+      "type" : "STRING",
+      "mode" : "REPEATED"
+    },
+    {
       "name" : "details",
       "type" : "JSON",
       "mode" : "NULLABLE"
