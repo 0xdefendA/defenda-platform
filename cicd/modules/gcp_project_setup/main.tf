@@ -120,8 +120,9 @@ resource "google_bigquery_table" "events" {
     }
   ])
   time_partitioning {
-    type  = "DAY"
-    field = "utctimestamp"
+    type          = "DAY"
+    field         = "utctimestamp"
+    expiration_ms = 36720000000 # 425 days
   }
   depends_on = [
     google_project_service.bigquery_api
