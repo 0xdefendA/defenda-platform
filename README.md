@@ -78,3 +78,9 @@ Deployment is entirely managed via Infrastructure as Code (Terraform) combined w
    ```bash
    terraform apply
    ```
+
+
+### Tests
+```
+cd services/ingestA/src && PYTHONPATH=. uv run pytest ../tests/ && cd ../../alertA && PYTHONPATH=src uv run pytest tests/
+```
