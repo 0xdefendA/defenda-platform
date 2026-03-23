@@ -58,6 +58,7 @@ async def index(request: Request):
 
     record = {
         "utctimestamp": utctimestamp,
+        "eventid": enriched_event.get("eventid", ""),
         "severity": enriched_event.get("severity", "INFO"),
         "summary": enriched_event.get("summary", "UNKNOWN"),
         "category": enriched_event.get("category", "UNKNOWN"),

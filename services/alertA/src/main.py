@@ -107,7 +107,7 @@ def process_new_alert_tx(transaction, alert_data: dict, events: list):
     """
     # Verify events
     for event in events:
-        event_id = event.get("details", {}).get("eventid") or event.get("eventid")
+        event_id = event.get("eventid")
         if event_id:
             doc_ref = fs_client.collection("processed_events").document(event_id)
             snapshot = doc_ref.get(transaction=transaction)
@@ -116,7 +116,7 @@ def process_new_alert_tx(transaction, alert_data: dict, events: list):
 
     # Mark events and create alert
     for event in events:
-        event_id = event.get("details", {}).get("eventid") or event.get("eventid")
+        event_id = event.get("eventid")
         mark_event_processed(event_id, transaction)
 
     alert_obj = Alert(**alert_data)
@@ -134,7 +134,7 @@ def process_inflight_update_tx(
     """
     # Verify events
     for event in events:
-        event_id = event.get("details", {}).get("eventid") or event.get("eventid")
+        event_id = event.get("eventid")
         if event_id:
             doc_ref = fs_client.collection("processed_events").document(event_id)
             snapshot = doc_ref.get(transaction=transaction)
@@ -143,7 +143,7 @@ def process_inflight_update_tx(
 
     # Mark events
     for event in events:
-        event_id = event.get("details", {}).get("eventid") or event.get("eventid")
+        event_id = event.get("eventid")
         mark_event_processed(event_id, transaction)
 
     inflight_ref = fs_client.collection("inflight_alerts").document(inflight_id)
@@ -202,9 +202,7 @@ async def handle_evaluate(request: Request):
                 new_events = [
                     e
                     for e in alert.get("events", [])
-                    if not is_event_processed(
-                        e.get("details", {}).get("eventid") or e.get("eventid")
-                    )
+                    if not is_event_processed(e.get("eventid"))
                 ]
                 if new_events:
                     alert["events"] = new_events
@@ -231,9 +229,7 @@ async def handle_evaluate(request: Request):
                     new_events = [
                         e
                         for e in alert.get("events", [])
-                        if not is_event_processed(
-                            e.get("details", {}).get("eventid") or e.get("eventid")
-                        )
+                        if not is_event_processed(e.get("eventid"))
                     ]
                     if new_events:
                         alert["events"] = new_events
@@ -295,9 +291,7 @@ async def handle_evaluate(request: Request):
                     new_events = [
                         e
                         for e in alert.get("events", [])
-                        if not is_event_processed(
-                            e.get("details", {}).get("eventid") or e.get("eventid")
-                        )
+                        if not is_event_processed(e.get("eventid"))
                     ]
                     if new_events:
                         alert["events"] = new_events

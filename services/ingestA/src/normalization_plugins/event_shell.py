@@ -16,6 +16,7 @@ class message(object):
         # our target shell
         event_shell = {
             "utctimestamp": utcnow().isoformat(),
+            "eventid": "",  # Placeholder, typically populated by enrichment
             "severity": "INFO",
             "summary": "UNKNOWN",
             "category": "UNKNOWN",
