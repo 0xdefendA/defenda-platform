@@ -1,0 +1,16 @@
+:root {
+    --color-primary: #0d59f2;
+    --color-background: #F8F9FA;
+    --color-surface: #FFFFFF;
+    --color-text: #1A1D20;
+    --color-muted: #868E96;
+    --color-accent: #E03131;
+    --color-success: #089950;
+    --color-border: #DEE2E6;
+    --font-heading: 'Space Grotesk', sans-serif;
+    --font-body: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --radius: 12px;
+    --spacing: 16px;
+    --border-thin: 1px solid var(--color-border);
+}
