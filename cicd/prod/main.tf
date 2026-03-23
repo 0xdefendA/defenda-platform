@@ -109,6 +109,9 @@ locals {
     for f in fileset(path.root, "../../shared/**") : filesha1(f)
   ]))
   alerta_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/alerta-service:${local.alerta_hash}"
+
+  responda_hash       = sha1(join("", [for f in fileset(path.root, "../../services/respondA/**") : filesha1(f)]))
+  responda_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/responda-service:${local.responda_hash}"
 }
 
 resource "terraform_data" "ingesta_build" {
@@ -150,6 +153,33 @@ resource "terraform_data" "alerta_build" {
         gcloud builds submit ../.. \
           --config ../../services/alertA/cloudbuild.yaml \
           --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
+          --service-account=${google_service_account.cloudbuild_sa.id} \
+          --project=${local.project_id}
+      EOT
+    environment = {
+      PROJECT_ID = local.project_id
+    }
+  }
+  depends_on = [
+    google_artifact_registry_repository.image-repo,
+    google_storage_bucket.cloudbuild_artifacts,
+    google_project_service.cloudbuild_api,
+    google_project_iam_member.sa_roles
+  ]
+}
+
+resource "terraform_data" "responda_build" {
+  input = local.responda_image_name # the image name with tag
+
+  triggers_replace = [
+    local.responda_hash
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+        gcloud builds submit ../.. \
+          --config ../../services/respondA/cloudbuild.yaml \
+          --substitutions="_IMAGE=${self.input},_LOCATION=${local.location},_FIREBASE_AUTH_DOMAIN=${local.project_id}.firebaseapp.com,_FIREBASE_PROJECT_ID=${local.project_id},_FIREBASE_STORAGE_BUCKET=${local.project_id}.appspot.com,_FIREBASE_MESSAGING_SENDER_ID=${var.firebase_messaging_sender_id},_FIREBASE_APP_ID=${var.firebase_app_id}" \
           --service-account=${google_service_account.cloudbuild_sa.id} \
           --project=${local.project_id}
       EOT
@@ -217,8 +247,12 @@ resource "google_cloud_run_v2_service" "respondA_service" {
   location = var.region
 
   template {
+    service_account = module.gcp_project_setup.responda_sa_email
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
+      image = terraform_data.responda_build.output
+      ports {
+        container_port = 8080
+      }
     }
   }
 
@@ -252,6 +286,21 @@ resource "google_cloud_run_v2_service_iam_member" "responda_invoker" {
   name     = google_cloud_run_v2_service.respondA_service.name
   role     = "roles/run.invoker"
   member   = "allUsers" # Allow unauthenticated invocation as per requirements
+}
+
+# --- Secrets ---
+
+resource "google_secret_manager_secret" "firebase_api_key" {
+  project   = var.project_id
+  secret_id = "firebase-api-key"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
 }
 
 # --- Triggers (Pub/Sub & Scheduler) ---

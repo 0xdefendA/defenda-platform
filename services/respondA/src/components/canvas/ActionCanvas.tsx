@@ -42,8 +42,8 @@ export const ActionCanvas = ({
                         {/* Canvas Header */}
                         <div className="h-14 border-b border-border flex items-center justify-between px-6 shrink-0 bg-surface/80 backdrop-blur-md sticky top-0">
                             <div className="flex items-center gap-3">
-                                <SeverityBadge severity={alert.severity} />
-                                <h2 className="font-heading font-bold text-lg">{alert.title}</h2>
+                                <SeverityBadge severity={alert.severity.toLowerCase() as any} />
+                                <h2 className="font-heading font-bold text-lg">{alert.alert_name}</h2>
                             </div>
                             <div className="flex items-center gap-3">
                                 <button
@@ -67,7 +67,7 @@ export const ActionCanvas = ({
                                         <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted">Telemetry Payload</label>
                                         <span className="text-[10px] font-mono text-muted">ID: {alert.id}</span>
                                     </div>
-                                    <TelemetryBlock payload={alert.payload} />
+                                    <TelemetryBlock payload={alert.events} />
                                 </section>
 
                                 <div className="grid grid-cols-5 gap-8">

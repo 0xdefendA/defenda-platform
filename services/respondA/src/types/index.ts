@@ -20,15 +20,19 @@ export interface Presence {
 
 export interface Alert {
     id: string;
-    severity: Severity;
-    title: string;
-    entity: string;
-    assigneeId: string | null;
-    status: AlertStatus;
-    resolution: AlertResolution | null;
-    impact: AlertImpact | null;
-    payload: Record<string, any>;
-    createdAt: number;
+    alert_id: string;
+    alert_name: string;
+    alert_type: string;
+    severity: string;
+    summary: string;
+    category: string;
+    tags: string[];
+    status: string;
+    created_at: any; // Firestore Timestamp
+    events: Record<string, any>[];
+    assigneeId?: string | null;
+    resolution?: AlertResolution | null;
+    impact?: AlertImpact | null;
 }
 
 export interface Theory {

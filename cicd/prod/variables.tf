@@ -4,7 +4,19 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "The GCP region for resources."
+  description = "The GCP region to deploy resources to."
+  type        = string
+}
+
+# Sensitive variables now fetched directly from Secret Manager by Cloud Build
+
+variable "firebase_messaging_sender_id" {
+  description = "Firebase Messaging Sender ID"
+  type        = string
+}
+
+variable "firebase_app_id" {
+  description = "Firebase App ID"
   type        = string
 }
 

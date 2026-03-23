@@ -11,7 +11,7 @@ export const useAlerts = (maxAlerts = 50) => {
     useEffect(() => {
         const q = query(
             collection(db, 'alerts'),
-            orderBy('createdAt', 'desc'),
+            orderBy('created_at', 'desc'),
             limit(maxAlerts)
         );
 

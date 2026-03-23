@@ -23,6 +23,9 @@ coverage.xml
 .vscode/
 .idea/
 
+# Dependencies
+node_modules/
+
 # Docker
 .dockerignore
 Dockerfile

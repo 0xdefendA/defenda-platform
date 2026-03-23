@@ -46,6 +46,12 @@ resource "google_project_service" "iam_api" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager_api" {
+  project            = var.project_id
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 data "google_project" "project" {
   project_id = var.project_id
 }
@@ -181,6 +187,15 @@ resource "google_service_account" "alerta_sa" {
   ]
 }
 
+resource "google_service_account" "responda_sa" {
+  project      = var.project_id
+  account_id   = "responda-sa"
+  display_name = "respondA Service Account"
+  depends_on = [
+    google_project_service.iam_api
+  ]
+}
+
 # IAM for BigQuery and Firestore
 resource "google_project_iam_member" "ingesta_bigquery_dataeditor" {
   project = var.project_id
@@ -217,6 +232,16 @@ resource "google_project_iam_member" "alerta_datastore_user" {
   member  = "serviceAccount:${google_service_account.alerta_sa.email}"
   depends_on = [
     google_service_account.alerta_sa,
+    google_firestore_database.database
+  ]
+}
+
+resource "google_project_iam_member" "responda_datastore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.responda_sa.email}"
+  depends_on = [
+    google_service_account.responda_sa,
     google_firestore_database.database
   ]
 }
