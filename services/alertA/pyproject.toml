@@ -1,0 +1,16 @@
+[project]
+name = "alerta"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chevron>=0.14.0",
+    "fastapi>=0.135.1",
+    "google-cloud-bigquery>=3.40.1",
+    "google-cloud-firestore>=2.25.0",
+    "google-cloud-pubsub>=2.36.0",
+    "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
+    "uvicorn>=0.42.0",
+]
