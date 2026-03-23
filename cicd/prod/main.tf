@@ -102,6 +102,13 @@ locals {
   # generate a hash of the source files to use as image tag
   ingesta_hash       = sha1(join("", [for f in fileset(path.root, "../../services/ingestA/**") : filesha1(f)]))
   ingesta_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/ingesta-service:${local.ingesta_hash}"
+
+  alerta_hash = sha1(join("", [
+    for f in fileset(path.root, "../../services/alertA/**") : filesha1(f)
+    ], [
+    for f in fileset(path.root, "../../shared/**") : filesha1(f)
+  ]))
+  alerta_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/alerta-service:${local.alerta_hash}"
 }
 
 resource "terraform_data" "ingesta_build" {
@@ -115,6 +122,33 @@ resource "terraform_data" "ingesta_build" {
     command = <<EOT
         gcloud builds submit ../../services/ingestA \
           --config ../../services/ingestA/cloudbuild.yaml \
+          --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
+          --service-account=${google_service_account.cloudbuild_sa.id} \
+          --project=${local.project_id}
+      EOT
+    environment = {
+      PROJECT_ID = local.project_id
+    }
+  }
+  depends_on = [
+    google_artifact_registry_repository.image-repo,
+    google_storage_bucket.cloudbuild_artifacts,
+    google_project_service.cloudbuild_api,
+    google_project_iam_member.sa_roles
+  ]
+}
+
+resource "terraform_data" "alerta_build" {
+  input = local.alerta_image_name # the image name with tag
+
+  triggers_replace = [
+    local.alerta_hash
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+        gcloud builds submit ../.. \
+          --config ../../services/alertA/cloudbuild.yaml \
           --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
           --service-account=${google_service_account.cloudbuild_sa.id} \
           --project=${local.project_id}
@@ -163,7 +197,11 @@ resource "google_cloud_run_v2_service" "alertA_service" {
   template {
     service_account = module.gcp_project_setup.alerta_sa_email
     containers {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
+      image = terraform_data.alerta_build.output
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
     }
   }
 
@@ -200,6 +238,14 @@ resource "google_cloud_run_v2_service_iam_member" "ingesta_invoker" {
   member   = "allUsers" # Allow unauthenticated invocation as per requirements
 }
 
+resource "google_cloud_run_v2_service_iam_member" "alerta_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.alertA_service.name
+  role     = "roles/run.invoker"
+  member   = "allUsers" # Required for pubsub and scheduler without complex OIDC routing
+}
+
 resource "google_cloud_run_v2_service_iam_member" "responda_invoker" {
   project  = var.project_id
   location = var.region
@@ -232,10 +278,27 @@ resource "google_cloud_scheduler_job" "trigger_alerta" {
   schedule = "* * * * *" # Every minute
 
   http_target {
-    http_method = "GET"
-    uri         = google_cloud_run_v2_service.alertA_service.uri
+    http_method = "POST"
+    uri         = "${google_cloud_run_v2_service.alertA_service.uri}/cron"
     oidc_token {
       service_account_email = module.gcp_project_setup.alerta_sa_email
+      audience              = google_cloud_run_v2_service.alertA_service.uri
+    }
+  }
+}
+
+resource "google_pubsub_subscription" "defenda_alerta_evaluate_sub" {
+  project = var.project_id
+  name    = "defenda-alerta-evaluate-sub"
+  topic   = module.gcp_project_setup.alerta_evaluate_topic_id
+
+  ack_deadline_seconds = 60 # give it more time since querying BQ might take a few seconds
+
+  push_config {
+    push_endpoint = "${google_cloud_run_v2_service.alertA_service.uri}/evaluate"
+    oidc_token {
+      service_account_email = module.gcp_project_setup.alerta_sa_email
+      audience              = google_cloud_run_v2_service.alertA_service.uri
     }
   }
 }

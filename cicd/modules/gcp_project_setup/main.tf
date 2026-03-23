@@ -149,6 +149,14 @@ resource "google_pubsub_topic" "defenda_event_ingest" {
   ]
 }
 
+resource "google_pubsub_topic" "defenda_alerta_evaluate" {
+  project = var.project_id
+  name    = "defenda-alerta-evaluate"
+  depends_on = [
+    google_project_service.pubsub_api
+  ]
+}
+
 # IAM for Cloud Run services
 resource "google_service_account" "ingesta_sa" {
   project      = var.project_id
@@ -189,6 +197,15 @@ resource "google_project_iam_member" "alerta_bigquery_dataviewer" {
   ]
 }
 
+resource "google_project_iam_member" "alerta_bigquery_jobuser" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.alerta_sa.email}"
+  depends_on = [
+    google_service_account.alerta_sa
+  ]
+}
+
 resource "google_project_iam_member" "alerta_datastore_user" {
   project = var.project_id
   role    = "roles/datastore.user"
@@ -196,6 +213,16 @@ resource "google_project_iam_member" "alerta_datastore_user" {
   depends_on = [
     google_service_account.alerta_sa,
     google_firestore_database.database
+  ]
+}
+
+resource "google_project_iam_member" "alerta_pubsub_publisher" {
+  project = var.project_id
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.alerta_sa.email}"
+  depends_on = [
+    google_service_account.alerta_sa,
+    google_pubsub_topic.defenda_alerta_evaluate
   ]
 }
 

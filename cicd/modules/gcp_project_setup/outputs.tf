@@ -19,8 +19,13 @@ output "alerta_sa_email" {
 }
 
 output "pubsub_topic_id" {
-  description = "The ID of the ingest Pub/Sub topic."
+  description = "The ID of the Pub/Sub topic for event ingestion"
   value       = google_pubsub_topic.defenda_event_ingest.id
+}
+
+output "alerta_evaluate_topic_id" {
+  description = "The ID of the Pub/Sub topic for alertA rule evaluation"
+  value       = google_pubsub_topic.defenda_alerta_evaluate.id
 }
 
 output "pubsub_topic_name" {
