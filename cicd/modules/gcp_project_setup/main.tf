@@ -117,6 +117,11 @@ resource "google_bigquery_table" "events" {
       "name" : "details",
       "type" : "JSON",
       "mode" : "NULLABLE"
+    },
+    {
+      "name" : "eventid",
+      "type" : "STRING",
+      "mode" : "NULLABLE"
     }
   ])
   time_partitioning {
