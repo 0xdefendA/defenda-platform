@@ -151,6 +151,26 @@ resource "google_firestore_database" "database" {
   ]
 }
 
+resource "google_firestore_index" "alerts_status_created_at" {
+  project    = var.project_id
+  database   = google_firestore_database.database.name
+  collection = "alerts"
+
+  fields {
+    field_path = "status"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+
+  depends_on = [
+    google_firestore_database.database
+  ]
+}
+
 # Pub/Sub Topic
 resource "google_pubsub_topic" "defenda_event_ingest" {
   project = var.project_id
