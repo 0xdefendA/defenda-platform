@@ -4,11 +4,11 @@ import type { Presence } from '../../types';
 
 interface HeaderProps {
     presences?: Presence[];
-    searchTerm: string;
-    onSearchChange: (term: string) => void;
+    searchTerm?: string;
+    onSearchChange?: (term: string) => void;
 }
 
-export const Header = ({ presences = [], searchTerm, onSearchChange }: HeaderProps) => {
+export const Header = ({ presences = [], searchTerm = '', onSearchChange }: HeaderProps) => {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
 
     return (
@@ -30,7 +30,7 @@ export const Header = ({ presences = [], searchTerm, onSearchChange }: HeaderPro
                                 autoFocus
                                 type="text"
                                 value={searchTerm}
-                                onChange={(e) => onSearchChange(e.target.value)}
+                                onChange={(e) => onSearchChange?.(e.target.value)}
                                 placeholder="Search alerts..."
                                 className="h-8 w-48 lg:w-64 pl-8 pr-2 border border-primary text-xs focus:outline-none focus:ring-0"
                                 onBlur={() => !searchTerm && setIsSearchOpen(false)}
