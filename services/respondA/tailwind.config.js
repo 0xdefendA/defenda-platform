@@ -14,6 +14,7 @@ export default {
                 muted: "var(--color-muted)",
                 accent: "var(--color-accent)",
                 success: "var(--color-success)",
+                error: "var(--color-error)",
                 border: "var(--color-border)",
             },
             fontFamily: {
