@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useAlerts } from '../hooks/useAlerts';
@@ -54,10 +54,43 @@ export const TriagePage = () => {
         setSelectedAlert(alert);
     };
 
-    const handleEscalate = (alertId: string) => {
+    const handleEscalate = async (alertId: string) => {
         console.log('Escalating alert:', alertId);
-        // In a real app, this would create an incident in Firestore and then navigate
-        navigate(`/incident/${alertId}-incident`);
+        const targetAlert = alerts.find(a => a.id === alertId);
+        if (!targetAlert) return;
+
+        const incidentId = `${alertId}-incident`;
+        try {
+            // 1. Create the incident document
+            const incidentRef = doc(db, 'incidents', incidentId);
+            await setDoc(incidentRef, {
+                id: incidentId,
+                title: `Incident: ${targetAlert.alert_name}`,
+                alertIds: [alertId],
+                theories: [],
+                done: [],
+                todo: [
+                    { id: '1', description: 'Investigate root cause', completedAt: null, completedBy: null },
+                    { id: '2', description: 'Contain the threat', completedAt: null, completedBy: null }
+                ],
+                playbookRef: null,
+                slackLink: null,
+                createdAt: Date.now()
+            });
+
+            // 2. Update the alert status
+            const alertRef = doc(db, 'alerts', alertId);
+            await updateDoc(alertRef, {
+                status: 'ESCALATED',
+                incidentId: incidentId
+            });
+
+            // 3. Navigate to the new incident
+            navigate(`/incident/${incidentId}`);
+        } catch (err) {
+            console.error('Error creating incident:', err);
+            alert('Failed to create incident. See console for details.');
+        }
     };
 
     const handleResolve = async (alertId: string, resolution: AlertResolution | null, impact: AlertImpact | null) => {
