@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { Alert } from '../types';
 
@@ -11,6 +11,7 @@ export const useAlerts = (maxAlerts = 50) => {
     useEffect(() => {
         const q = query(
             collection(db, 'alerts'),
+            where('status', '==', 'OPEN'),
             orderBy('created_at', 'desc'),
             limit(maxAlerts)
         );
