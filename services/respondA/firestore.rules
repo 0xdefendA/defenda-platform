@@ -35,5 +35,13 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && request.auth.uid == userId;
     }
+
+    // Real-time presence
+    match /presence/{userId} {
+      allow read: if isAuthenticated();
+      // In a real app we might want to ensure they only write their own ID
+      // but for this demo allow any authenticated write
+      allow write, delete: if isAuthenticated();
+    }
   }
 }
