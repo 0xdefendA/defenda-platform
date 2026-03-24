@@ -29,10 +29,12 @@ export const TriagePage = () => {
             (queueFilter === 'escalated' && a.status === 'ESCALATED');
 
         const search = searchTerm.toLowerCase();
+        // Deep search: check displayed fields first, then all JSON data
         const matchesSearch = !searchTerm ||
             a.alert_name.toLowerCase().includes(search) ||
             a.id.toLowerCase().includes(search) ||
-            a.summary.toLowerCase().includes(search);
+            a.summary.toLowerCase().includes(search) ||
+            JSON.stringify(a).toLowerCase().includes(search);
 
         return matchesSeverity && matchesQueue && matchesSearch;
     });
@@ -58,17 +60,18 @@ export const TriagePage = () => {
         navigate(`/incident/${alertId}-incident`);
     };
 
-    const handleResolve = async (alertId: string, resolution: AlertResolution, impact: AlertImpact) => {
-        console.log('Resolving alert:', alertId, resolution, impact);
+    const handleResolve = async (alertId: string, resolution: AlertResolution | null, impact: AlertImpact | null) => {
+        console.log('Updating alert resolution:', alertId, resolution, impact);
         try {
+            const isResolved = !!(resolution && impact);
             const alertRef = doc(db, 'alerts', alertId);
             await updateDoc(alertRef, {
-                status: 'RESOLVED',
+                status: isResolved ? 'RESOLVED' : 'OPEN',
                 resolution,
                 impact,
-                resolved_at: new Date()
+                resolved_at: isResolved ? new Date() : null
             });
-            setSelectedAlert(null);
+            if (isResolved) setSelectedAlert(null);
         } catch (err) {
             console.error('Error resolving alert:', err);
             alert('Failed to resolve alert. See console for details.');

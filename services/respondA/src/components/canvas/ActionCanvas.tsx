@@ -10,7 +10,7 @@ interface ActionCanvasProps {
     alert: Alert | null;
     onClose: () => void;
     onEscalate: (alertId: string) => void;
-    onResolve: (alertId: string, resolution: AlertResolution, impact: AlertImpact) => void;
+    onResolve: (alertId: string, resolution: AlertResolution | null, impact: AlertImpact | null) => void;
     onAction: (alertId: string, type: 'parry' | 'riposte', action: string) => void;
 }
 

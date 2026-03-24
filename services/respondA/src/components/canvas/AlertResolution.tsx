@@ -4,7 +4,7 @@ import type { AlertResolution, AlertImpact } from '../../types';
 interface AlertResolutionFormProps {
     currentResolution?: AlertResolution | null;
     currentImpact?: AlertImpact | null;
-    onResolve: (resolution: AlertResolution, impact: AlertImpact) => void;
+    onResolve: (resolution: AlertResolution | null, impact: AlertImpact | null) => void;
 }
 
 export const AlertResolutionForm = ({ currentResolution, currentImpact, onResolve }: AlertResolutionFormProps) => {
@@ -20,14 +20,15 @@ export const AlertResolutionForm = ({ currentResolution, currentImpact, onResolv
     const impacts: AlertImpact[] = ['maximum', 'high', 'medium', 'low', 'none'];
 
     const handleSelectResolution = (res: AlertResolution) => {
-        setResolution(res);
-        if (impact) onResolve(res, impact);
+        const newValue = resolution === res ? null : res;
+        setResolution(newValue);
+        onResolve(newValue, impact);
     };
 
     const handleSelectImpact = (imp: AlertImpact) => {
-        setImpact(imp);
-        if (resolution) onResolve(resolution, imp);
-        else alert('Please select a resolution first');
+        const newValue = impact === imp ? null : imp;
+        setImpact(newValue);
+        onResolve(resolution, newValue);
     };
 
     return (

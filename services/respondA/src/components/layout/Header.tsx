@@ -32,10 +32,18 @@ export const Header = ({ presences = [], searchTerm = '', onSearchChange }: Head
                                 value={searchTerm}
                                 onChange={(e) => onSearchChange?.(e.target.value)}
                                 placeholder="Search alerts..."
-                                className="h-8 w-48 lg:w-64 pl-8 pr-2 border border-primary text-xs focus:outline-none focus:ring-0"
+                                className="h-8 w-48 lg:w-64 pl-8 pr-8 border border-primary text-xs focus:outline-none focus:ring-0"
                                 onBlur={() => !searchTerm && setIsSearchOpen(false)}
                             />
-                            <span className="material-symbols-outlined absolute left-2 text-[16px] text-primary">search</span>
+                            <span className="material-symbols-outlined absolute left-2 text-[16px] text-primary pointer-events-none">search</span>
+                            {searchTerm && (
+                                <button
+                                    onClick={() => onSearchChange?.('')}
+                                    className="absolute right-2 text-muted hover:text-primary transition-colors flex items-center justify-center"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <button
