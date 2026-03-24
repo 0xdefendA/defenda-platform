@@ -79,7 +79,11 @@ export const ActionCanvas = ({
                                     {/* Resolution Section */}
                                     <section className="col-span-2 space-y-4">
                                         <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted block">Resolve Alert</label>
-                                        <AlertResolutionForm onResolve={(res, imp) => onResolve(alert.id, res, imp)} />
+                                        <AlertResolutionForm
+                                            currentResolution={alert.resolution}
+                                            currentImpact={alert.impact}
+                                            onResolve={(res, imp) => onResolve(alert.id, res, imp)}
+                                        />
                                     </section>
                                 </div>
                             </div>

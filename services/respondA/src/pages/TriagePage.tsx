@@ -16,17 +16,25 @@ export const TriagePage = () => {
     const { user } = useAuth();
     const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
     const [statusFilter, setStatusFilter] = useState<string>('OPEN');
-    const [severityFilter, setSeverityFilter] = useState<string | null>(null);
+    const [severityFilter, setSeverityFilter] = useState<string[]>([]);
     const [queueFilter, setQueueFilter] = useState<'all' | 'my' | 'escalated'>('all');
+    const [searchTerm, setSearchTerm] = useState('');
     const { alerts, loading } = useAlerts(statusFilter);
     const { presences } = usePresence(selectedAlert?.id || 'triage-queue');
 
     const filteredAlerts = alerts.filter(a => {
-        const matchesSeverity = !severityFilter || a.severity.toLowerCase() === severityFilter;
+        const matchesSeverity = severityFilter.length === 0 || severityFilter.includes(a.severity.toLowerCase());
         const matchesQueue = queueFilter === 'all' ||
             (queueFilter === 'my' && a.assigneeId === user?.uid) ||
             (queueFilter === 'escalated' && a.status === 'ESCALATED');
-        return matchesSeverity && matchesQueue;
+
+        const search = searchTerm.toLowerCase();
+        const matchesSearch = !searchTerm ||
+            a.alert_name.toLowerCase().includes(search) ||
+            a.id.toLowerCase().includes(search) ||
+            a.summary.toLowerCase().includes(search);
+
+        return matchesSeverity && matchesQueue && matchesSearch;
     });
 
     const counts = {
@@ -109,7 +117,11 @@ export const TriagePage = () => {
             />
 
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-                <Header presences={presences.filter(p => p.activeContextId === 'triage-queue')} />
+                <Header
+                    presences={presences.filter(p => p.activeContextId === 'triage-queue')}
+                    searchTerm={searchTerm}
+                    onSearchChange={setSearchTerm}
+                />
 
                 <TriageQueue
                     alerts={filteredAlerts}

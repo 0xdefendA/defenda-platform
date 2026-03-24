@@ -29,8 +29,8 @@ export const TriageQueue = ({ alerts, presences, onAlertClick, onClaim, onUnclai
                     <div>Alert ID</div>
                     <div>Title</div>
                     <div className="hidden md:block">Entity</div>
-                    <div className="hidden lg:block">Resolution</div>
-                    <div className="hidden lg:block">Impact</div>
+                    <div className="hidden md:block">Resolution</div>
+                    <div className="hidden md:block">Impact</div>
                     <div className="hidden md:block text-right pr-4">Assignee</div>
                     <div className="text-right pr-2">Actions</div>
                 </div>

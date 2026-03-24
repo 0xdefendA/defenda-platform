@@ -42,7 +42,7 @@ export const useAlerts = (status: string | null = 'OPEN', maxAlerts = 50) => {
         );
 
         return () => unsubscribe();
-    }, [maxAlerts]);
+    }, [status, maxAlerts]);
 
     return { alerts, loading, error };
 };

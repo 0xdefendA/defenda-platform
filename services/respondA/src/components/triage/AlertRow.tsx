@@ -48,11 +48,11 @@ export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, curren
                 {alert.summary || 'No entity'}
             </div>
 
-            <div className="hidden lg:block text-[10px] font-mono uppercase text-muted truncate">
+            <div className="hidden md:block text-[10px] font-mono uppercase text-muted truncate">
                 {alert.resolution?.replace('_', ' ') || '-'}
             </div>
 
-            <div className="hidden lg:block text-[10px] font-mono uppercase text-muted truncate">
+            <div className="hidden md:block text-[10px] font-mono uppercase text-muted truncate">
                 {alert.impact || '-'}
             </div>
 

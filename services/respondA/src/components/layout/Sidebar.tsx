@@ -1,8 +1,8 @@
 import { useAuth } from '../../hooks/useAuth';
 
 interface SidebarProps {
-    severityFilter: string | null;
-    onSeverityFilterChange: (severity: string | null) => void;
+    severityFilter: string[];
+    onSeverityFilterChange: (severities: string[]) => void;
     queueFilter: 'all' | 'my' | 'escalated';
     onQueueFilterChange: (filter: 'all' | 'my' | 'escalated') => void;
     statusFilter: string;
@@ -95,9 +95,9 @@ export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, o
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <h4 className="text-xs font-medium text-text-main">Severity</h4>
-                        {severityFilter && (
+                        {severityFilter.length > 0 && (
                             <button
-                                onClick={() => onSeverityFilterChange(null)}
+                                onClick={() => onSeverityFilterChange([])}
                                 className="text-[10px] text-primary hover:underline uppercase font-bold"
                             >
                                 Clear
@@ -105,34 +105,33 @@ export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, o
                         )}
                     </div>
                     <div className="flex flex-col gap-1.5">
-                        {severities.map((s) => (
-                            <label
-                                key={s.id}
-                                className="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group"
-                                onClick={() => onSeverityFilterChange(s.id === severityFilter ? null : s.id)}
-                            >
-                                <div className={`w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors ${severityFilter === s.id ? 'bg-primary border-primary' : ''}`}>
-                                    <span className={`material-symbols-outlined text-[14px] ${severityFilter === s.id ? 'text-white opacity-100' : 'text-primary opacity-0'}`}>
-                                        check
-                                    </span>
-                                </div>
-                                {s.label}
-                                <span className="ml-auto font-mono text-[10px]">{s.count}</span>
-                            </label>
-                        ))}
+                        {severities.map((s) => {
+                            const isSelected = severityFilter.includes(s.id);
+                            return (
+                                <label
+                                    key={s.id}
+                                    className="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group"
+                                    onClick={() => {
+                                        if (isSelected) {
+                                            onSeverityFilterChange(severityFilter.filter(id => id !== s.id));
+                                        } else {
+                                            onSeverityFilterChange([...severityFilter, s.id]);
+                                        }
+                                    }}
+                                >
+                                    <div className={`w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors ${isSelected ? 'bg-primary border-primary' : ''}`}>
+                                        <span className={`material-symbols-outlined text-[14px] ${isSelected ? 'text-white opacity-100' : 'text-primary opacity-0'}`}>
+                                            check
+                                        </span>
+                                    </div>
+                                    {s.label}
+                                    <span className="ml-auto font-mono text-[10px]">{s.count}</span>
+                                </label>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* Entity Filter */}
-                <div className="flex flex-col gap-2 mt-4">
-                    <h4 className="text-xs font-medium text-text-main">Entity Type</h4>
-                    <div className="flex flex-wrap gap-2">
-                        <button className="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors">Endpoint</button>
-                        <button className="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors bg-row-hover">Network</button>
-                        <button className="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors">Identity</button>
-                        <button className="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors">Cloud</button>
-                    </div>
-                </div>
             </div>
 
             {/* User Profile Area */}
