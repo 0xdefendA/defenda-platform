@@ -31,6 +31,7 @@ export interface Alert {
     created_at: any; // Firestore Timestamp
     events: Record<string, any>[];
     assigneeId?: string | null;
+    assigneeName?: string | null;
     resolution?: AlertResolution | null;
     impact?: AlertImpact | null;
 }
