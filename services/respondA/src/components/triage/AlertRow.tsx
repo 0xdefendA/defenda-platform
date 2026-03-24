@@ -5,15 +5,23 @@ interface AlertRowProps {
     alert: Alert;
     presences: Presence[];
     onClick: (alert: Alert) => void;
+    onClaim: (alertId: string) => void;
+    onUnclaim: (alertId: string) => void;
+    currentUserId?: string;
 }
 
-export const AlertRow = ({ alert, presences, onClick }: AlertRowProps) => {
+export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, currentUserId }: AlertRowProps) => {
     const isUnassigned = !alert.assigneeId;
+    const isAssignedToMe = alert.assigneeId === currentUserId;
     const activeAnalyst = presences.length > 0 ? presences[0] : null;
 
     return (
         <div
-            onClick={() => onClick(alert)}
+            onClick={(e) => {
+                // Don't trigger open if clicking action buttons
+                if ((e.target as HTMLElement).closest('button')) return;
+                onClick(alert);
+            }}
             className="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative"
         >
             {/* Presence Indicator line */}
@@ -50,9 +58,27 @@ export const AlertRow = ({ alert, presences, onClick }: AlertRowProps) => {
                 )}
             </div>
 
-            <div className="text-right pr-2">
-                <button className="opacity-0 group-hover:opacity-100 font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors">
-                    {isUnassigned ? 'Claim' : 'Open'}
+            <div className="text-right pr-2 flex justify-end gap-2">
+                {isUnassigned ? (
+                    <button
+                        onClick={() => onClaim(alert.id)}
+                        className="opacity-0 group-hover:opacity-100 font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors"
+                    >
+                        Claim
+                    </button>
+                ) : isAssignedToMe ? (
+                    <button
+                        onClick={() => onUnclaim(alert.id)}
+                        className="opacity-0 group-hover:opacity-100 font-display text-[11px] font-bold uppercase tracking-wider text-muted border border-muted px-3 py-1 hover:bg-muted hover:text-white transition-colors"
+                    >
+                        Unclaim
+                    </button>
+                ) : null}
+                <button
+                    onClick={() => onClick(alert)}
+                    className="opacity-0 group-hover:opacity-100 font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors"
+                >
+                    Open
                 </button>
             </div>
         </div>

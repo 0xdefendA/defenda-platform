@@ -3,16 +3,21 @@ import { useAuth } from '../../hooks/useAuth';
 interface SidebarProps {
     severityFilter: string | null;
     onSeverityFilterChange: (severity: string | null) => void;
+    queueFilter: 'all' | 'my' | 'escalated';
+    onQueueFilterChange: (filter: 'all' | 'my' | 'escalated') => void;
     counts: {
         total: number;
+        myQueue: number;
+        escalated: number;
         critical: number;
         high: number;
         medium: number;
         low: number;
+        info: number;
     };
 }
 
-export const Sidebar = ({ severityFilter, onSeverityFilterChange, counts }: SidebarProps) => {
+export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, onQueueFilterChange, counts }: SidebarProps) => {
     const { user } = useAuth();
 
     const severities = [
@@ -20,6 +25,7 @@ export const Sidebar = ({ severityFilter, onSeverityFilterChange, counts }: Side
         { id: 'high', label: 'High', count: counts.high },
         { id: 'medium', label: 'Medium', count: counts.medium },
         { id: 'low', label: 'Low', count: counts.low },
+        { id: 'info', label: 'Info', count: counts.info },
     ];
 
     return (
@@ -34,21 +40,30 @@ export const Sidebar = ({ severityFilter, onSeverityFilterChange, counts }: Side
 
             {/* Navigation Links */}
             <div className="flex flex-col py-4 px-2 space-y-1">
-                <a className="flex items-center gap-3 px-3 py-2 text-sm font-medium bg-row-hover text-text-main border-l-2 border-primary" href="#">
+                <button
+                    onClick={() => onQueueFilterChange('all')}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'all' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                >
                     <span className="material-symbols-outlined text-[20px]">shield</span>
                     All Alerts
                     <span className="ml-auto font-mono text-xs text-muted">{counts.total}</span>
-                </a>
-                <a className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted hover:bg-row-hover hover:text-text-main border-l-2 border-transparent hover:border-border-color transition-colors" href="#">
+                </button>
+                <button
+                    onClick={() => onQueueFilterChange('my')}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'my' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                >
                     <span className="material-symbols-outlined text-[20px]">verified_user</span>
                     My Queue
-                    <span className="ml-auto font-mono text-xs text-muted">3</span>
-                </a>
-                <a className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted hover:bg-row-hover hover:text-text-main border-l-2 border-transparent hover:border-border-color transition-colors" href="#">
+                    <span className="ml-auto font-mono text-xs text-muted">{counts.myQueue}</span>
+                </button>
+                <button
+                    onClick={() => onQueueFilterChange('escalated')}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'escalated' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                >
                     <span className="material-symbols-outlined text-[20px]">warning</span>
                     Escalated
-                    <span className="ml-auto font-mono text-xs text-accent">2</span>
-                </a>
+                    <span className="ml-auto font-mono text-xs text-accent">{counts.escalated}</span>
+                </button>
             </div>
 
             {/* Filters Section */}

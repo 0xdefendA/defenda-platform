@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useAuth } from '../hooks/useAuth';
 import { useAlerts } from '../hooks/useAlerts';
 import { usePresence } from '../hooks/usePresence';
 import { Sidebar } from '../components/layout/Sidebar';
@@ -12,21 +13,30 @@ import type { Alert, AlertResolution, AlertImpact } from '../types';
 
 export const TriagePage = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
     const [severityFilter, setSeverityFilter] = useState<string | null>(null);
+    const [queueFilter, setQueueFilter] = useState<'all' | 'my' | 'escalated'>('all');
     const { alerts, loading } = useAlerts();
     const { presences } = usePresence(selectedAlert?.id || 'triage-queue');
 
-    const filteredAlerts = severityFilter
-        ? alerts.filter(a => a.severity.toLowerCase() === severityFilter)
-        : alerts;
+    const filteredAlerts = alerts.filter(a => {
+        const matchesSeverity = !severityFilter || a.severity.toLowerCase() === severityFilter;
+        const matchesQueue = queueFilter === 'all' ||
+            (queueFilter === 'my' && a.assigneeId === user?.uid) ||
+            (queueFilter === 'escalated' && a.status === 'ESCALATED');
+        return matchesSeverity && matchesQueue;
+    });
 
     const counts = {
         total: alerts.length,
+        myQueue: alerts.filter(a => a.assigneeId === user?.uid).length,
+        escalated: alerts.filter(a => a.status === 'ESCALATED').length,
         critical: alerts.filter(a => a.severity.toLowerCase() === 'critical').length,
         high: alerts.filter(a => a.severity.toLowerCase() === 'high').length,
         medium: alerts.filter(a => a.severity.toLowerCase() === 'medium').length,
-        low: alerts.filter(a => a.severity.toLowerCase() === 'low').length,
+        low: alerts.filter(a => ['low', 'info'].includes(a.severity.toLowerCase())).length,
+        info: alerts.filter(a => a.severity.toLowerCase() === 'info').length,
     };
 
     const handleAlertClick = (alert: Alert) => {
@@ -60,11 +70,38 @@ export const TriagePage = () => {
         console.log(`Executing ${type}: ${action} on alert ${alertId}`);
     };
 
+    const handleClaim = async (alertId: string) => {
+        if (!user) return;
+        try {
+            const alertRef = doc(db, 'alerts', alertId);
+            await updateDoc(alertRef, {
+                assigneeId: user.uid,
+                assigneeName: user.displayName || user.email?.split('@')[0] || 'Analyst'
+            });
+        } catch (err) {
+            console.error('Error claiming alert:', err);
+        }
+    };
+
+    const handleUnclaim = async (alertId: string) => {
+        try {
+            const alertRef = doc(db, 'alerts', alertId);
+            await updateDoc(alertRef, {
+                assigneeId: null,
+                assigneeName: null
+            });
+        } catch (err) {
+            console.error('Error unclaiming alert:', err);
+        }
+    };
+
     return (
         <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-main overflow-hidden">
             <Sidebar
                 severityFilter={severityFilter}
                 onSeverityFilterChange={setSeverityFilter}
+                queueFilter={queueFilter}
+                onQueueFilterChange={setQueueFilter}
                 counts={counts}
             />
 
@@ -75,6 +112,9 @@ export const TriagePage = () => {
                     alerts={filteredAlerts}
                     presences={presences}
                     onAlertClick={handleAlertClick}
+                    onClaim={handleClaim}
+                    onUnclaim={handleUnclaim}
+                    currentUserId={user?.uid}
                     loading={loading}
                 />
             </main>

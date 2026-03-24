@@ -5,10 +5,13 @@ interface TriageQueueProps {
     alerts: Alert[];
     presences: Presence[];
     onAlertClick: (alert: Alert) => void;
+    onClaim: (alertId: string) => void;
+    onUnclaim: (alertId: string) => void;
+    currentUserId?: string;
     loading: boolean;
 }
 
-export const TriageQueue = ({ alerts, presences, onAlertClick, loading }: TriageQueueProps) => {
+export const TriageQueue = ({ alerts, presences, onAlertClick, onClaim, onUnclaim, currentUserId, loading }: TriageQueueProps) => {
     if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center">
@@ -39,6 +42,9 @@ export const TriageQueue = ({ alerts, presences, onAlertClick, loading }: Triage
                         alert={alert}
                         presences={presences.filter(p => p.activeContextId === alert.id)}
                         onClick={onAlertClick}
+                        onClaim={onClaim}
+                        onUnclaim={onUnclaim}
+                        currentUserId={currentUserId}
                     />
                 ))}
                 {alerts.length === 0 && (
