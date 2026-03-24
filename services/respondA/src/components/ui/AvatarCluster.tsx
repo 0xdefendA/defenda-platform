@@ -7,25 +7,39 @@ interface AvatarClusterProps {
 
 export const AvatarCluster = ({ presences, limit = 4 }: AvatarClusterProps) => {
     const visiblePresences = presences.slice(0, limit);
-    const remaining = presences.length - limit;
 
     return (
-        <div className="flex -space-x-2 overflow-hidden">
-            {visiblePresences.map((presence) => (
-                <div
-                    key={presence.userId}
-                    className="inline-block h-6 w-6 rounded-full ring-2 ring-surface bg-muted flex items-center justify-center text-[10px] font-bold text-white uppercase"
-                    style={{ backgroundColor: (presence as any).userColor || '#868E96' }}
-                    title={(presence as any).userName || presence.userId}
-                >
-                    {((presence as any).userName || presence.userId).substring(0, 1)}
-                </div>
-            ))}
-            {remaining > 0 && (
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-white ring-2 ring-surface">
-                    +{remaining}
-                </div>
-            )}
+        <div className="flex -space-x-2">
+            {visiblePresences.map((presence, idx) => {
+                const userName = (presence as any).userName || presence.userId;
+                const initials = userName.substring(0, 2).toUpperCase();
+                const userColor = (presence as any).userColor || '#0055FF';
+                const userPhoto = (presence as any).userPhoto;
+
+                return (
+                    <div
+                        key={presence.userId}
+                        className="w-6 h-6 rounded-full border-2 border-surface relative group cursor-pointer ring-1 bg-surface"
+                        style={{
+                            zIndex: 30 - idx,
+                            boxShadow: `0 0 0 1px ${userColor}`
+                        }}
+                        title={userName}
+                    >
+                        {userPhoto ? (
+                            <img alt={userName} className="w-full h-full object-cover rounded-full" src={userPhoto} />
+                        ) : (
+                            <div className="w-full h-full rounded-full bg-row-hover flex items-center justify-center text-[10px] font-mono font-bold text-text-main">
+                                {initials}
+                            </div>
+                        )}
+                        <div
+                            className="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border border-surface"
+                            style={{ backgroundColor: userColor }}
+                        ></div>
+                    </div>
+                );
+            })}
         </div>
     );
 };

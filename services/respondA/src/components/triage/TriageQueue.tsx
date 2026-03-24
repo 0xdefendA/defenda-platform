@@ -18,36 +18,35 @@ export const TriageQueue = ({ alerts, presences, onAlertClick, loading }: Triage
     }
 
     return (
-        <div className="flex-1 overflow-auto bg-surface">
-            <table className="w-full border-collapse">
-                <thead>
-                    <tr className="bg-muted/10 border-b border-border h-10">
-                        <th className="px-4 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-widest text-muted">Severity</th>
-                        <th className="px-4 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-widest text-muted">ID</th>
-                        <th className="px-4 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-widest text-muted">Title</th>
-                        <th className="px-4 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-widest text-muted">Entity</th>
-                        <th className="px-4 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-widest text-muted">Timestamp</th>
-                        <th className="px-4 py-2 text-right text-[10px] font-mono font-bold uppercase tracking-widest text-muted">Presence</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {alerts.map((alert) => (
-                        <AlertRow
-                            key={alert.id}
-                            alert={alert}
-                            presences={presences.filter(p => p.activeContextId === alert.id)}
-                            onClick={onAlertClick}
-                        />
-                    ))}
-                    {alerts.length === 0 && (
-                        <tr>
-                            <td colSpan={6} className="px-4 py-12 text-center text-muted italic">
-                                No active alerts in queue.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+        <div className="flex-1 overflow-auto bg-surface relative">
+            {/* Table Header */}
+            <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20">
+                <div className="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-2 text-xs font-display text-muted uppercase tracking-wider h-10">
+                    <div className="pl-2">Severity</div>
+                    <div>Alert ID</div>
+                    <div>Title</div>
+                    <div className="hidden md:block">Entity</div>
+                    <div className="hidden md:block text-right pr-4">Assignee</div>
+                    <div className="text-right pr-2">Actions</div>
+                </div>
+            </div>
+
+            {/* Table Body */}
+            <div className="flex flex-col">
+                {alerts.map((alert) => (
+                    <AlertRow
+                        key={alert.id}
+                        alert={alert}
+                        presences={presences.filter(p => p.activeContextId === alert.id)}
+                        onClick={onAlertClick}
+                    />
+                ))}
+                {alerts.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 bg-surface">
+                        <p className="font-display text-2xl font-semibold text-muted">Queue Clear. En Garde.</p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

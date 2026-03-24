@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAlerts } from '../hooks/useAlerts';
 import { usePresence } from '../hooks/usePresence';
+import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
 import { TriageQueue } from '../components/triage/TriageQueue';
 import { ActionCanvas } from '../components/canvas/ActionCanvas';
@@ -33,17 +34,11 @@ export const TriagePage = () => {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-background overflow-hidden">
-            <Header presences={presences.filter(p => p.activeContextId === 'triage-queue')} />
+        <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-main overflow-hidden">
+            <Sidebar />
 
-            <main className="flex-1 flex flex-col overflow-hidden">
-                <div className="h-12 border-b border-border bg-surface px-6 flex items-center justify-between shrink-0">
-                    <h1 className="font-heading font-bold text-sm uppercase tracking-widest text-muted">Triage Queue</h1>
-                    <div className="flex items-center gap-2 text-[10px] font-mono text-muted uppercase">
-                        <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                        Live Sync Active
-                    </div>
-                </div>
+            <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+                <Header presences={presences.filter(p => p.activeContextId === 'triage-queue')} />
 
                 <TriageQueue
                     alerts={alerts}

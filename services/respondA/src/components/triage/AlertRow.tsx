@@ -1,7 +1,6 @@
 import type { Alert, Presence } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
 import { AvatarCluster } from '../ui/AvatarCluster';
-import { format } from 'date-fns';
 
 interface AlertRowProps {
     alert: Alert;
@@ -10,34 +9,53 @@ interface AlertRowProps {
 }
 
 export const AlertRow = ({ alert, presences, onClick }: AlertRowProps) => {
-    // Map Firestore Timestamp or Date to number for format()
-    const timestamp = alert.created_at?.seconds ? alert.created_at.seconds * 1000 : alert.created_at;
+    const isUnassigned = !alert.assigneeId;
+    const activeAnalyst = presences.length > 0 ? presences[0] : null;
 
     return (
-        <tr
+        <div
             onClick={() => onClick(alert)}
-            className="group hover:bg-muted/30 cursor-pointer border-b border-border transition-colors h-12"
+            className="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative"
         >
-            <td className="px-4 py-2">
+            {/* Presence Indicator line */}
+            {activeAnalyst && (
+                <div
+                    className="absolute left-0 top-0 bottom-0 w-[2px] z-10"
+                    style={{ backgroundColor: (activeAnalyst as any).userColor || '#0055FF' }}
+                />
+            )}
+
+            <div className="pl-2">
                 <SeverityBadge severity={alert.severity.toLowerCase() as any} />
-            </td>
-            <td className="px-4 py-2 font-mono text-[10px] text-muted truncate max-w-[80px]" title={alert.id}>
-                {alert.id.substring(0, 8)}
-            </td>
-            <td className="px-4 py-2 font-medium text-sm">
+            </div>
+
+            <div className="font-mono text-xs text-text-main truncate pr-2">
+                {alert.id.substring(0, 8).toUpperCase()}
+            </div>
+
+            <div className="font-medium text-sm text-text-main pr-4 truncate" title={alert.alert_name}>
                 {alert.alert_name}
-            </td>
-            <td className="px-4 py-2 text-sm text-muted">
-                {alert.summary}
-            </td>
-            <td className="px-4 py-2 text-xs text-muted font-mono">
-                {timestamp ? format(timestamp, 'HH:mm:ss') : 'N/A'}
-            </td>
-            <td className="px-4 py-2 text-right">
-                {presences.length > 0 && (
-                    <AvatarCluster presences={presences} limit={3} />
+            </div>
+
+            <div className="hidden md:block text-sm text-muted font-mono truncate">
+                {alert.summary || 'No entity'}
+            </div>
+
+            <div className="hidden md:flex justify-end pr-4">
+                {isUnassigned ? (
+                    <span className="text-xs text-muted font-mono italic">Unassigned</span>
+                ) : (
+                    <div className="w-6 h-6 rounded-full border border-surface overflow-hidden bg-muted flex items-center justify-center text-[10px] font-mono font-bold text-white">
+                        {alert.assigneeId?.substring(0, 2).toUpperCase() || '??'}
+                    </div>
                 )}
-            </td>
-        </tr>
+            </div>
+
+            <div className="text-right pr-2">
+                <button className="opacity-0 group-hover:opacity-100 font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors">
+                    {isUnassigned ? 'Claim' : 'Open'}
+                </button>
+            </div>
+        </div>
     );
 };
