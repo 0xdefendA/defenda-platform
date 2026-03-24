@@ -5,6 +5,8 @@ interface SidebarProps {
     onSeverityFilterChange: (severity: string | null) => void;
     queueFilter: 'all' | 'my' | 'escalated';
     onQueueFilterChange: (filter: 'all' | 'my' | 'escalated') => void;
+    statusFilter: string;
+    onStatusFilterChange: (status: string) => void;
     counts: {
         total: number;
         myQueue: number;
@@ -17,7 +19,7 @@ interface SidebarProps {
     };
 }
 
-export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, onQueueFilterChange, counts }: SidebarProps) => {
+export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, onQueueFilterChange, statusFilter, onStatusFilterChange, counts }: SidebarProps) => {
     const { user } = useAuth();
 
     const severities = [
@@ -69,6 +71,25 @@ export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, o
             {/* Filters Section */}
             <div className="mt-4 px-5 flex flex-col gap-4 flex-grow overflow-y-auto">
                 <h3 className="font-display text-xs font-semibold text-muted uppercase tracking-wider mb-2 border-b border-thin border-border-color pb-1">Filters</h3>
+
+                {/* Status Filter */}
+                <div className="flex flex-col gap-2">
+                    <h4 className="text-xs font-medium text-text-main">Status</h4>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => onStatusFilterChange('OPEN')}
+                            className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'OPEN' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
+                        >
+                            Open
+                        </button>
+                        <button
+                            onClick={() => onStatusFilterChange('RESOLVED')}
+                            className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'RESOLVED' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
+                        >
+                            Resolved
+                        </button>
+                    </div>
+                </div>
 
                 {/* Severity Filter */}
                 <div className="flex flex-col gap-2">

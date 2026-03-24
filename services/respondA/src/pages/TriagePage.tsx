@@ -15,9 +15,10 @@ export const TriagePage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+    const [statusFilter, setStatusFilter] = useState<string>('OPEN');
     const [severityFilter, setSeverityFilter] = useState<string | null>(null);
     const [queueFilter, setQueueFilter] = useState<'all' | 'my' | 'escalated'>('all');
-    const { alerts, loading } = useAlerts();
+    const { alerts, loading } = useAlerts(statusFilter);
     const { presences } = usePresence(selectedAlert?.id || 'triage-queue');
 
     const filteredAlerts = alerts.filter(a => {
@@ -35,7 +36,7 @@ export const TriagePage = () => {
         critical: alerts.filter(a => a.severity.toLowerCase() === 'critical').length,
         high: alerts.filter(a => a.severity.toLowerCase() === 'high').length,
         medium: alerts.filter(a => a.severity.toLowerCase() === 'medium').length,
-        low: alerts.filter(a => ['low', 'info'].includes(a.severity.toLowerCase())).length,
+        low: alerts.filter(a => a.severity.toLowerCase() === 'low').length,
         info: alerts.filter(a => a.severity.toLowerCase() === 'info').length,
     };
 
@@ -98,6 +99,8 @@ export const TriagePage = () => {
     return (
         <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-main overflow-hidden">
             <Sidebar
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
                 severityFilter={severityFilter}
                 onSeverityFilterChange={setSeverityFilter}
                 queueFilter={queueFilter}

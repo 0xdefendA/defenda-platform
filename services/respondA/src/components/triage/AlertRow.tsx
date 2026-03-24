@@ -22,7 +22,7 @@ export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, curren
                 if ((e.target as HTMLElement).closest('button')) return;
                 onClick(alert);
             }}
-            className="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative"
+            className="grid grid-cols-[70px_90px_minmax(200px,_1.5fr)_minmax(120px,_1fr)_110px_100px_100px_150px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative min-w-[1000px]"
         >
             {/* Presence Indicator line */}
             {activeAnalyst && (
@@ -44,21 +44,32 @@ export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, curren
                 {alert.alert_name}
             </div>
 
-            <div className="hidden md:block text-sm text-muted font-mono truncate">
+            <div className="hidden md:block text-xs text-muted font-mono truncate">
                 {alert.summary || 'No entity'}
+            </div>
+
+            <div className="hidden lg:block text-[10px] font-mono uppercase text-muted truncate">
+                {alert.resolution?.replace('_', ' ') || '-'}
+            </div>
+
+            <div className="hidden lg:block text-[10px] font-mono uppercase text-muted truncate">
+                {alert.impact || '-'}
             </div>
 
             <div className="hidden md:flex justify-end pr-4">
                 {isUnassigned ? (
-                    <span className="text-xs text-muted font-mono italic">Unassigned</span>
+                    <span className="text-[10px] text-muted font-mono italic">Unassigned</span>
                 ) : (
-                    <div className="w-6 h-6 rounded-full border border-surface overflow-hidden bg-muted flex items-center justify-center text-[10px] font-mono font-bold text-white">
-                        {alert.assigneeId?.substring(0, 2).toUpperCase() || '??'}
+                    <div
+                        className="w-6 h-6 rounded-full border border-surface overflow-hidden bg-muted flex items-center justify-center text-[10px] font-mono font-bold text-white shrink-0"
+                        title={alert.assigneeName || alert.assigneeId || 'Assigned'}
+                    >
+                        {alert.assigneeName?.substring(0, 2).toUpperCase() || '??'}
                     </div>
                 )}
             </div>
 
-            <div className="text-right pr-2 flex justify-end gap-2">
+            <div className="text-right pr-2 flex justify-end gap-2 shrink-0">
                 {isUnassigned ? (
                     <button
                         onClick={() => onClaim(alert.id)}

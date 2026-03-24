@@ -23,12 +23,14 @@ export const TriageQueue = ({ alerts, presences, onAlertClick, onClaim, onUnclai
     return (
         <div className="flex-1 overflow-auto bg-surface relative">
             {/* Table Header */}
-            <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20">
-                <div className="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-2 text-xs font-display text-muted uppercase tracking-wider h-10">
+            <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20 min-w-[1000px]">
+                <div className="grid grid-cols-[70px_90px_minmax(200px,_1.5fr)_minmax(120px,_1fr)_110px_100px_100px_150px] items-center px-4 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10">
                     <div className="pl-2">Severity</div>
                     <div>Alert ID</div>
                     <div>Title</div>
                     <div className="hidden md:block">Entity</div>
+                    <div className="hidden lg:block">Resolution</div>
+                    <div className="hidden lg:block">Impact</div>
                     <div className="hidden md:block text-right pr-4">Assignee</div>
                     <div className="text-right pr-2">Actions</div>
                 </div>
