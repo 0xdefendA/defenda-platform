@@ -1,6 +1,5 @@
 import type { Alert, Presence } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
-import { AvatarCluster } from '../ui/AvatarCluster';
 
 interface AlertRowProps {
     alert: Alert;
