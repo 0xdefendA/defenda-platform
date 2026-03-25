@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -13,6 +13,7 @@ import type { Alert, AlertResolution, AlertImpact } from '../types';
 
 export const TriagePage = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { user } = useAuth();
     const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
     const [statusFilter, setStatusFilter] = useState<string>('OPEN');
@@ -20,6 +21,16 @@ export const TriagePage = () => {
     const [queueFilter, setQueueFilter] = useState<'all' | 'my'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const { alerts, loading } = useAlerts(statusFilter);
+
+    // Sync searchTerm with URL search param
+    useEffect(() => {
+        const query = searchParams.get('search');
+        if (query) {
+            setSearchTerm(query);
+            // If we are searching for a specific alert, we might want to see it regardless of status
+            if (query.length > 20) setStatusFilter('');
+        }
+    }, [searchParams]);
     const { presences } = usePresence(selectedAlert?.id || 'triage-queue');
 
     const filteredAlerts = alerts.filter(a => {
