@@ -171,6 +171,26 @@ resource "google_firestore_index" "alerts_status_created_at" {
   ]
 }
 
+resource "google_firestore_index" "timeline_context_timestamp" {
+  project    = var.project_id
+  database   = google_firestore_database.database.name
+  collection = "timeline"
+
+  fields {
+    field_path = "contextId"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "timestamp"
+    order      = "ASCENDING"
+  }
+
+  depends_on = [
+    google_firestore_database.database
+  ]
+}
+
 # Pub/Sub Topic
 resource "google_pubsub_topic" "defenda_event_ingest" {
   project = var.project_id

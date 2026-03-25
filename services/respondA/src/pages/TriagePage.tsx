@@ -17,16 +17,14 @@ export const TriagePage = () => {
     const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
     const [statusFilter, setStatusFilter] = useState<string>('OPEN');
     const [severityFilter, setSeverityFilter] = useState<string[]>([]);
-    const [queueFilter, setQueueFilter] = useState<'all' | 'my' | 'escalated'>('all');
+    const [queueFilter, setQueueFilter] = useState<'all' | 'my'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const { alerts, loading } = useAlerts(statusFilter);
     const { presences } = usePresence(selectedAlert?.id || 'triage-queue');
 
     const filteredAlerts = alerts.filter(a => {
         const matchesSeverity = severityFilter.length === 0 || severityFilter.includes(a.severity.toLowerCase());
-        const matchesQueue = queueFilter === 'all' ||
-            (queueFilter === 'my' && a.assigneeId === user?.uid) ||
-            (queueFilter === 'escalated' && a.status === 'ESCALATED');
+        const matchesQueue = queueFilter === 'all' || (queueFilter === 'my' && a.assigneeId === user?.uid);
 
         const search = searchTerm.toLowerCase();
         // Deep search: check displayed fields first, then all JSON data
@@ -140,6 +138,29 @@ export const TriagePage = () => {
         }
     };
 
+    const handleCreateIncident = async () => {
+        const incidentId = `incident-${Math.random().toString(36).substr(2, 9)}`;
+        try {
+            const incidentRef = doc(db, 'incidents', incidentId);
+            await setDoc(incidentRef, {
+                id: incidentId,
+                title: `Manual Incident: ${new Date().toLocaleDateString()}`,
+                alertIds: [],
+                theories: [],
+                done: [],
+                todo: [
+                    { id: '1', description: 'Investigate source', completedAt: null, completedBy: null }
+                ],
+                playbookRef: null,
+                slackLink: null,
+                createdAt: Date.now()
+            });
+            navigate(`/incident/${incidentId}`);
+        } catch (err) {
+            console.error('Error creating manual incident:', err);
+        }
+    };
+
     return (
         <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-main overflow-hidden">
             <Sidebar
@@ -149,6 +170,7 @@ export const TriagePage = () => {
                 onSeverityFilterChange={setSeverityFilter}
                 queueFilter={queueFilter}
                 onQueueFilterChange={setQueueFilter}
+                onCreateIncident={handleCreateIncident}
                 counts={counts}
             />
 

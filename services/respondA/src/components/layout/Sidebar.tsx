@@ -1,16 +1,18 @@
 import { useAuth } from '../../hooks/useAuth';
+import { Link, useLocation } from 'react-router-dom';
+import { Plus, LayoutGrid, ShieldAlert, Zap } from 'lucide-react';
 
 interface SidebarProps {
-    severityFilter: string[];
-    onSeverityFilterChange: (severities: string[]) => void;
-    queueFilter: 'all' | 'my' | 'escalated';
-    onQueueFilterChange: (filter: 'all' | 'my' | 'escalated') => void;
-    statusFilter: string;
-    onStatusFilterChange: (status: string) => void;
-    counts: {
+    severityFilter?: string[];
+    onSeverityFilterChange?: (severities: string[]) => void;
+    queueFilter?: 'all' | 'my';
+    onQueueFilterChange?: (filter: 'all' | 'my') => void;
+    statusFilter?: string;
+    onStatusFilterChange?: (status: string) => void;
+    onCreateIncident?: () => void;
+    counts?: {
         total: number;
         myQueue: number;
-        escalated: number;
         critical: number;
         high: number;
         medium: number;
@@ -19,16 +21,19 @@ interface SidebarProps {
     };
 }
 
-export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, onQueueFilterChange, statusFilter, onStatusFilterChange, counts }: SidebarProps) => {
+export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilter = 'all', onQueueFilterChange, statusFilter = 'OPEN', onStatusFilterChange, onCreateIncident, counts }: SidebarProps) => {
     const { user } = useAuth();
+    const location = useLocation();
+    const isAlertsPage = location.pathname === '/';
+    const isIncidentsPage = location.pathname === '/incidents';
 
-    const severities = [
+    const severities = counts ? [
         { id: 'critical', label: 'Critical', count: counts.critical },
         { id: 'high', label: 'High', count: counts.high },
         { id: 'medium', label: 'Medium', count: counts.medium },
         { id: 'low', label: 'Low', count: counts.low },
         { id: 'info', label: 'Info', count: counts.info },
-    ];
+    ] : [];
 
     return (
         <aside className="w-[240px] flex-shrink-0 border-r border-thin border-border-color bg-surface flex flex-col h-full z-10 hidden md:flex">
@@ -40,99 +45,133 @@ export const Sidebar = ({ severityFilter, onSeverityFilterChange, queueFilter, o
                 </h1>
             </div>
 
-            {/* Navigation Links */}
+            {/* Global Navigation */}
             <div className="flex flex-col py-4 px-2 space-y-1">
-                <button
-                    onClick={() => onQueueFilterChange('all')}
-                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'all' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                <h3 className="font-display text-[10px] font-bold text-muted uppercase tracking-widest px-3 mb-1">Navigation</h3>
+                <Link
+                    to="/"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${isAlertsPage ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
                 >
-                    <span className="material-symbols-outlined text-[20px]">shield</span>
-                    All Alerts
-                    <span className="ml-auto font-mono text-xs text-muted">{counts.total}</span>
-                </button>
-                <button
-                    onClick={() => onQueueFilterChange('my')}
-                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'my' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                    <LayoutGrid className="w-4 h-4" />
+                    Alerts
+                </Link>
+                <Link
+                    to="/incidents"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${isIncidentsPage ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
                 >
-                    <span className="material-symbols-outlined text-[20px]">verified_user</span>
-                    My Queue
-                    <span className="ml-auto font-mono text-xs text-muted">{counts.myQueue}</span>
-                </button>
-                <button
-                    onClick={() => onQueueFilterChange('escalated')}
-                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'escalated' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
-                >
-                    <span className="material-symbols-outlined text-[20px]">warning</span>
-                    Escalated
-                    <span className="ml-auto font-mono text-xs text-accent">{counts.escalated}</span>
-                </button>
+                    <ShieldAlert className="w-4 h-4" />
+                    Incidents
+                </Link>
+                <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted/40 cursor-not-allowed">
+                    <Zap className="w-4 h-4" />
+                    Events
+                </div>
             </div>
 
-            {/* Filters Section */}
-            <div className="mt-4 px-5 flex flex-col gap-4 flex-grow overflow-y-auto">
-                <h3 className="font-display text-xs font-semibold text-muted uppercase tracking-wider mb-2 border-b border-thin border-border-color pb-1">Filters</h3>
-
-                {/* Status Filter */}
-                <div className="flex flex-col gap-2">
-                    <h4 className="text-xs font-medium text-text-main">Status</h4>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => onStatusFilterChange('OPEN')}
-                            className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'OPEN' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
-                        >
-                            Open
-                        </button>
-                        <button
-                            onClick={() => onStatusFilterChange('RESOLVED')}
-                            className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'RESOLVED' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
-                        >
-                            Resolved
-                        </button>
-                    </div>
+            {/* Contextual Action: Create Incident (Only on Incidents Page) */}
+            {isIncidentsPage && (
+                <div className="px-4 pb-4">
+                    <button
+                        onClick={onCreateIncident}
+                        className="w-full flex items-center justify-center gap-2 bg-primary text-white py-2 px-4 rounded-lg text-xs font-bold hover:bg-primary/90 transition-all shadow-sm shadow-primary/20"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Create Incident
+                    </button>
                 </div>
+            )}
 
-                {/* Severity Filter */}
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-medium text-text-main">Severity</h4>
-                        {severityFilter.length > 0 && (
+            {/* Alerts Contextual View Filters */}
+            {isAlertsPage && counts && (
+                <div className="flex flex-col py-2 px-2 space-y-1 border-t border-thin border-border-color">
+                    <h3 className="font-display text-[10px] font-bold text-muted uppercase tracking-widest px-3 my-2">Queue</h3>
+                    <button
+                        onClick={() => onQueueFilterChange?.('all')}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'all' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                    >
+                        <span className="material-symbols-outlined text-[20px]">shield</span>
+                        All Alerts
+                        <span className="ml-auto font-mono text-xs text-muted">{counts.total}</span>
+                    </button>
+                    <button
+                        onClick={() => onQueueFilterChange?.('my')}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${queueFilter === 'my' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                    >
+                        <span className="material-symbols-outlined text-[20px]">verified_user</span>
+                        My Queue
+                        <span className="ml-auto font-mono text-xs text-muted">{counts.myQueue}</span>
+                    </button>
+                </div>
+            )}
+
+            {/* Filters Section (Only on Alerts Page) */}
+            {isAlertsPage && (
+                <div className="mt-2 px-5 flex flex-col gap-4 flex-grow overflow-y-auto border-t border-thin border-border-color pt-4">
+                    <h3 className="font-display text-xs font-semibold text-muted uppercase tracking-wider mb-2 border-b border-thin border-border-color pb-1">Filters</h3>
+
+                    {/* Status Filter */}
+                    <div className="flex flex-col gap-2">
+                        <h4 className="text-xs font-medium text-text-main">Status</h4>
+                        <div className="flex gap-2">
                             <button
-                                onClick={() => onSeverityFilterChange([])}
-                                className="text-[10px] text-primary hover:underline uppercase font-bold"
+                                onClick={() => onStatusFilterChange?.('OPEN')}
+                                className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'OPEN' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
                             >
-                                Clear
+                                Open
                             </button>
-                        )}
+                            <button
+                                onClick={() => onStatusFilterChange?.('RESOLVED')}
+                                className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'RESOLVED' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
+                            >
+                                Resolved
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                        {severities.map((s) => {
-                            const isSelected = severityFilter.includes(s.id);
-                            return (
-                                <label
-                                    key={s.id}
-                                    className="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group"
-                                    onClick={() => {
-                                        if (isSelected) {
-                                            onSeverityFilterChange(severityFilter.filter(id => id !== s.id));
-                                        } else {
-                                            onSeverityFilterChange([...severityFilter, s.id]);
-                                        }
-                                    }}
-                                >
-                                    <div className={`w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors ${isSelected ? 'bg-primary border-primary' : ''}`}>
-                                        <span className={`material-symbols-outlined text-[14px] ${isSelected ? 'text-white opacity-100' : 'text-primary opacity-0'}`}>
-                                            check
-                                        </span>
-                                    </div>
-                                    {s.label}
-                                    <span className="ml-auto font-mono text-[10px]">{s.count}</span>
-                                </label>
-                            );
-                        })}
-                    </div>
-                </div>
 
-            </div>
+                    {/* Severity Filter */}
+                    {counts && (
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-medium text-text-main">Severity</h4>
+                                {severityFilter.length > 0 && (
+                                    <button
+                                        onClick={() => onSeverityFilterChange?.([])}
+                                        className="text-[10px] text-primary hover:underline uppercase font-bold"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                {severities.map((s) => {
+                                    const isSelected = severityFilter.includes(s.id);
+                                    return (
+                                        <label
+                                            key={s.id}
+                                            className="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group"
+                                            onClick={() => {
+                                                if (isSelected) {
+                                                    onSeverityFilterChange?.(severityFilter.filter(id => id !== s.id));
+                                                } else {
+                                                    onSeverityFilterChange?.([...severityFilter, s.id]);
+                                                }
+                                            }}
+                                        >
+                                            <div className={`w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors ${isSelected ? 'bg-primary border-primary' : ''}`}>
+                                                <span className={`material-symbols-outlined text-[14px] ${isSelected ? 'text-white opacity-100' : 'text-primary opacity-0'}`}>
+                                                    check
+                                                </span>
+                                            </div>
+                                            {s.label}
+                                            <span className="ml-auto font-mono text-[10px]">{s.count}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* User Profile Area */}
             <div className="mt-auto border-t border-thin border-border-color p-4">

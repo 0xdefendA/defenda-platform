@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { TriagePage } from './pages/TriagePage';
+import { IncidentsPage } from './pages/IncidentsPage';
 import { IncidentWorkspace } from './components/incident/IncidentWorkspace';
 import { LoginPage } from './pages/LoginPage';
 import { AuthProvider } from './hooks/useAuth';
@@ -17,6 +18,14 @@ function App() {
               element={
                 <AuthGuard>
                   <TriagePage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/incidents"
+              element={
+                <AuthGuard>
+                  <IncidentsPage />
                 </AuthGuard>
               }
             />

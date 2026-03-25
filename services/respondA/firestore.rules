@@ -43,5 +43,10 @@ service cloud.firestore {
       // but for this demo allow any authenticated write
       allow write, delete: if isAuthenticated();
     }
+
+    // Incident timeline
+    match /timeline/{eventId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

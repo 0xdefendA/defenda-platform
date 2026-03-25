@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, ShieldAlert } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { Alert, AlertResolution, AlertImpact } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
 import { TelemetryBlock } from './TelemetryBlock';
@@ -76,14 +77,35 @@ export const ActionCanvas = ({
                                         <ParryRiposte onAction={(type, action) => onAction(alert.id, type, action)} />
                                     </section>
 
-                                    {/* Resolution Section */}
+                                    {/* Resolution Section or Linked Incident */}
                                     <section className="col-span-2 space-y-4">
-                                        <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted block">Resolve Alert</label>
-                                        <AlertResolutionForm
-                                            currentResolution={alert.resolution}
-                                            currentImpact={alert.impact}
-                                            onResolve={(res, imp) => onResolve(alert.id, res, imp)}
-                                        />
+                                        {alert.status === 'ESCALATED' ? (
+                                            <div className="bg-primary/5 border border-primary/20 p-6 rounded-xl space-y-4">
+                                                <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                                                    <ShieldAlert className="w-5 h-5" />
+                                                    Escalated to Incident
+                                                </div>
+                                                <p className="text-xs text-muted leading-relaxed">
+                                                    This alert is part of an ongoing investigation. All actions and notes should be recorded in the incident workspace.
+                                                </p>
+                                                <Link
+                                                    to={`/incident/${(alert as any).incidentId || `${alert.id}-incident`}`}
+                                                    className="flex items-center justify-center gap-2 w-full bg-primary text-white py-2 rounded-lg text-xs font-bold hover:bg-primary/90 transition-all shadow-sm shadow-primary/20"
+                                                >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                    View Incident Workspace
+                                                </Link>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted block">Resolve Alert</label>
+                                                <AlertResolutionForm
+                                                    currentResolution={alert.resolution}
+                                                    currentImpact={alert.impact}
+                                                    onResolve={(res, imp) => onResolve(alert.id, res, imp)}
+                                                />
+                                            </>
+                                        )}
                                     </section>
                                 </div>
                             </div>
