@@ -7,7 +7,7 @@ export default {
     theme: {
         extend: {
             colors: {
-                "primary": "#0055FF",
+                "primary": "#0d59f2",
                 "background-light": "#F8F9FA",
                 "background-dark": "#101622",
                 "surface": "#FFFFFF",
@@ -19,7 +19,7 @@ export default {
                 "row-hover": "#F1F3F5"
             },
             fontFamily: {
-                "display": ["Space Grotesk", "sans-serif"],
+                "heading": ["Space Grotesk", "sans-serif"],
                 "body": ["IBM Plex Sans", "sans-serif"],
                 "mono": ["IBM Plex Mono", "monospace"]
             },
@@ -27,13 +27,13 @@ export default {
                 'thin': '1px',
             },
             borderRadius: {
-                "DEFAULT": "0px",
-                "sm": "0px",
-                "md": "0px",
-                "lg": "0px",
-                "xl": "0px",
-                "2xl": "0px",
-                "3xl": "0px",
+                "DEFAULT": "12px",
+                "sm": "8px",
+                "md": "12px",
+                "lg": "16px",
+                "xl": "20px",
+                "2xl": "24px",
+                "3xl": "32px",
                 "full": "9999px",
             },
             boxShadow: {

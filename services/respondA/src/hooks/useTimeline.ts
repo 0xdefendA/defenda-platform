@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type { TimelineEvent } from '../types';
 
@@ -28,5 +28,26 @@ export const useTimeline = (contextId: string | null) => {
         return () => unsubscribe();
     }, [contextId]);
 
-    return { events, loading };
+    const updateEvent = async (id: string, message: string) => {
+        try {
+            const eventRef = doc(db, 'timeline', id);
+            await updateDoc(eventRef, {
+                message,
+                editedAt: Date.now()
+            });
+        } catch (err) {
+            console.error('Error updating event:', err);
+        }
+    };
+
+    const deleteEvent = async (id: string) => {
+        try {
+            const eventRef = doc(db, 'timeline', id);
+            await deleteDoc(eventRef);
+        } catch (err) {
+            console.error('Error deleting event:', err);
+        }
+    };
+
+    return { events, loading, updateEvent, deleteEvent };
 };

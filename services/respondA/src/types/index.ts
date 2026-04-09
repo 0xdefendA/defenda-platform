@@ -69,4 +69,5 @@ export interface TimelineEvent {
     actorId: string | 'system';
     message: string;
     timestamp: number;
+    editedAt?: number;
 }

@@ -1,15 +1,19 @@
 import { format } from 'date-fns';
-import { Send } from 'lucide-react';
+import { Send, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { TimelineEvent } from '../../types';
+import { InlineEdit } from '../ui/InlineEdit';
 
 interface LiveTimelineProps {
     events: TimelineEvent[];
     onSendMessage: (message: string) => void;
+    onEdit?: (id: string, message: string) => void;
+    onDelete?: (id: string) => void;
 }
 
-export const LiveTimeline = ({ events, onSendMessage }: LiveTimelineProps) => {
+export const LiveTimeline = ({ events, onSendMessage, onEdit, onDelete }: LiveTimelineProps) => {
     const [message, setMessage] = useState('');
+    const [editingId, setEditingId] = useState<string | null>(null);
 
     const handleSend = () => {
         if (!message.trim()) return;
@@ -38,20 +42,61 @@ export const LiveTimeline = ({ events, onSendMessage }: LiveTimelineProps) => {
                                     )}
                                 </div>
 
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-mono text-muted uppercase tracking-widest">
-                                            {format(event.timestamp, 'HH:mm:ss')}
-                                        </span>
-                                        {event.type !== 'system' && (
-                                            <span className="text-xs font-bold text-text">
-                                                {event.actorId === 'system' ? 'System' : event.actorId}
+                                <div className="space-y-1 group">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-mono text-muted uppercase tracking-widest">
+                                                {format(event.timestamp, 'HH:mm:ss')}
+                                                {event.editedAt && (
+                                                    <span className="ml-2 italic">(edited)</span>
+                                                )}
                                             </span>
+                                            {event.type !== 'system' && (
+                                                <span className="text-xs font-bold text-text">
+                                                    {event.actorId === 'system' ? 'System' : event.actorId}
+                                                </span>
+                                            )}
+                                        </div>
+                                        
+                                        {event.type !== 'system' && editingId !== event.id && (
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => setEditingId(event.id)}
+                                                    className="p-1 hover:bg-muted rounded text-muted hover:text-text transition-colors"
+                                                    title="Edit note"
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (confirm('Are you sure you want to delete this note?')) {
+                                                            onDelete?.(event.id);
+                                                        }
+                                                    }}
+                                                    className="p-1 hover:bg-destructive/10 rounded text-muted hover:text-destructive transition-colors"
+                                                    title="Delete note"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                     <div className={`text-sm leading-relaxed p-2 rounded-lg border 
                     ${event.type === 'system' ? 'bg-muted/5 border-transparent text-muted italic' : 'bg-surface border-border shadow-sm'}`}>
-                                        {event.message}
+                                        {editingId === event.id ? (
+                                            <InlineEdit
+                                                value={event.message}
+                                                multiline
+                                                onSave={(val) => {
+                                                    onEdit?.(event.id, val);
+                                                    setEditingId(null);
+                                                }}
+                                                onCancel={() => setEditingId(null)}
+                                                className="text-sm"
+                                            />
+                                        ) : (
+                                            event.message
+                                        )}
                                     </div>
                                 </div>
                             </div>

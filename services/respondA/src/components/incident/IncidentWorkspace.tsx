@@ -19,12 +19,24 @@ export const IncidentWorkspace = () => {
     const { id } = useParams<{ id: string }>();
     const { user } = useAuth();
     const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
     const { incident, loading } = useIncident(id);
     const { presences } = usePresence(id || null);
-    const { events } = useTimeline(id || null);
+    const { events, updateEvent, deleteEvent } = useTimeline(id || null);
 
     if (loading) return <div className="p-8">Loading incident...</div>;
     if (!incident) return <div className="p-8 text-accent">Incident not found</div>;
+
+    const handleEditTitle = async (title: string) => {
+        if (!id) return;
+        try {
+            const incidentRef = doc(db, 'incidents', id);
+            await updateDoc(incidentRef, { title });
+            setIsEditingTitle(false);
+        } catch (err) {
+            console.error('Error editing title:', err);
+        }
+    };
 
     const handleSendMessage = async (message: string) => {
         if (!id || !user) return;
@@ -73,6 +85,28 @@ export const IncidentWorkspace = () => {
         }
     };
 
+    const handleEditTheory = async (theoryId: string, description: string, likelihood: Likelihood) => {
+        if (!id || !incident) return;
+        const theory = incident.theories.find(t => t.id === theoryId);
+        if (!theory) return;
+
+        try {
+            const incidentRef = doc(db, 'incidents', id);
+            await updateDoc(incidentRef, {
+                theories: arrayRemove(theory)
+            });
+            await updateDoc(incidentRef, {
+                theories: arrayUnion({
+                    ...theory,
+                    description,
+                    likelihood
+                })
+            });
+        } catch (err) {
+            console.error('Error editing theory:', err);
+        }
+    };
+
     const handleAddTask = async (description: string) => {
         if (!id) return;
         try {
@@ -87,6 +121,55 @@ export const IncidentWorkspace = () => {
             });
         } catch (err) {
             console.error('Error adding task:', err);
+        }
+    };
+
+    const handleEditTask = async (taskId: string, description: string) => {
+        if (!id || !incident) return;
+        
+        const todoTask = incident.todo?.find(t => t.id === taskId);
+        const doneTask = incident.done?.find(t => t.id === taskId);
+        const task = todoTask || doneTask;
+        
+        if (!task) return;
+
+        try {
+            const incidentRef = doc(db, 'incidents', id);
+            const field = todoTask ? 'todo' : 'done';
+            
+            await updateDoc(incidentRef, {
+                [field]: arrayRemove(task)
+            });
+            
+            await updateDoc(incidentRef, {
+                [field]: arrayUnion({
+                    ...task,
+                    description
+                })
+            });
+        } catch (err) {
+            console.error('Error editing task:', err);
+        }
+    };
+
+    const handleDeleteTask = async (taskId: string) => {
+        if (!id || !incident) return;
+        
+        const todoTask = incident.todo?.find(t => t.id === taskId);
+        const doneTask = incident.done?.find(t => t.id === taskId);
+        const task = todoTask || doneTask;
+        
+        if (!task) return;
+
+        try {
+            const incidentRef = doc(db, 'incidents', id);
+            const field = todoTask ? 'todo' : 'done';
+            
+            await updateDoc(incidentRef, {
+                [field]: arrayRemove(task)
+            });
+        } catch (err) {
+            console.error('Error deleting task:', err);
         }
     };
 
@@ -134,8 +217,22 @@ export const IncidentWorkspace = () => {
                     <Link to="/" className="p-2 hover:bg-muted rounded-full transition-colors text-muted hover:text-text">
                         <ChevronLeft className="w-5 h-5" />
                     </Link>
-                    <div className="space-y-0.5">
-                        <h1 className="font-heading font-bold text-lg leading-tight">{incident.title}</h1>
+                    <div className="space-y-0.5 min-w-[300px]">
+                        {isEditingTitle ? (
+                            <InlineEdit
+                                value={incident.title}
+                                onSave={handleEditTitle}
+                                onCancel={() => setIsEditingTitle(false)}
+                                className="text-lg font-bold font-heading"
+                            />
+                        ) : (
+                            <h1 
+                                onClick={() => setIsEditingTitle(true)}
+                                className="font-heading font-bold text-lg leading-tight cursor-pointer hover:text-primary transition-colors"
+                            >
+                                {incident.title}
+                            </h1>
+                        )}
                         <div className="flex items-center gap-3 text-[10px] text-muted font-mono uppercase tracking-widest">
                             <span>Incident ID: {incident.id}</span>
                             {incident.slackLink && (
@@ -178,7 +275,7 @@ export const IncidentWorkspace = () => {
                     className="flex items-center gap-2 bg-primary/5 border border-primary/20 text-primary px-4 py-2 rounded-lg text-xs font-bold hover:bg-primary/10 transition-all"
                 >
                     <Share2 className="w-4 h-4" />
-                    Summarize & Share
+                    Summarize &amp; Share
                 </button>
             </div>
 
@@ -189,7 +286,12 @@ export const IncidentWorkspace = () => {
                     <div className="flex items-center gap-2 text-primary font-heading font-bold uppercase tracking-widest text-xs mb-4">
                         Timeline
                     </div>
-                    <LiveTimeline events={events} onSendMessage={handleSendMessage} />
+                    <LiveTimeline 
+                        events={events} 
+                        onSendMessage={handleSendMessage} 
+                        onEdit={updateEvent}
+                        onDelete={deleteEvent}
+                    />
                 </div>
 
                 {/* Q2: Active Theories */}
@@ -198,6 +300,7 @@ export const IncidentWorkspace = () => {
                         theories={incident.theories || []}
                         onAdd={handleAddTheory}
                         onRemove={handleRemoveTheory}
+                        onEdit={handleEditTheory}
                     />
                 </div>
 
@@ -208,6 +311,8 @@ export const IncidentWorkspace = () => {
                         type="done"
                         tasks={incident.done || []}
                         onToggle={handleToggleTask}
+                        onEdit={handleEditTask}
+                        onDelete={handleDeleteTask}
                     />
                 </div>
 
@@ -219,6 +324,8 @@ export const IncidentWorkspace = () => {
                         tasks={incident.todo || []}
                         onAdd={handleAddTask}
                         onToggle={handleToggleTask}
+                        onEdit={handleEditTask}
+                        onDelete={handleDeleteTask}
                     />
                 </div>
             </div>
