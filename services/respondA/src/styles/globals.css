@@ -1,0 +1,36 @@
+@import "tailwindcss";
+@import "./design-tokens.css";
+
+@theme {
+    --color-primary: var(--color-primary);
+    --color-background: var(--color-background);
+    --color-surface: var(--color-surface);
+    --color-text: var(--color-text);
+    --color-muted: var(--color-muted);
+    --color-accent: var(--color-accent);
+    --color-success: var(--color-success);
+    --color-border: var(--color-border);
+
+    --font-heading: var(--font-heading);
+    --font-body: var(--font-body);
+    --font-mono: var(--font-mono);
+
+    --radius-default: var(--radius);
+}
+
+@layer base {
+    body {
+        background-color: var(--color-background);
+        color: var(--color-text);
+        font-family: var(--font-body);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-family: var(--font-heading);
+    }
+}

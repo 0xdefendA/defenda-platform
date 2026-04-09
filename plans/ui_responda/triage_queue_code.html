@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>respondA - Triage Queue</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0055FF",
+                        "background-light": "#F8F9FA",
+                        "background-dark": "#101622",
+                        "surface": "#FFFFFF",
+                        "text-main": "#1A1D20",
+                        "muted": "#868E96",
+                        "accent": "#E03131",
+                        "success": "#089950",
+                        "border-color": "#DEE2E6",
+                        "row-hover": "#F1F3F5"
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["IBM Plex Sans", "sans-serif"],
+                        "mono": ["IBM Plex Mono", "monospace"]
+                    },
+                    borderWidth: {
+                        'thin': '1px',
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0px",
+                        "sm": "0px",
+                        "md": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "2xl": "0px",
+                        "3xl": "0px",
+                        "full": "9999px",
+                    },
+                    boxShadow: {
+                        'none': 'none',
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background-color: #F8F9FA;
+            color: #1A1D20;
+            margin: 0;
+            padding: 0;
+        }
+        h1, h2, h3, h4, h5, h6, .font-display {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .font-mono {
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        
+        /* Strict adherence to design tokens */
+        * {
+            border-radius: 0 !important;
+            box-shadow: none !important;
+        }
+        
+        /* Exceptions for specific geometric elements like avatars */
+        .rounded-full {
+            border-radius: 9999px !important;
+        }
+        
+        /* Subtle scrollbar for data grid */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F8F9FA; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #DEE2E6; 
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #868E96; 
+        }
+        
+        .row-hover-reveal {
+            opacity: 0;
+            transition: opacity 0.15s ease-in-out;
+        }
+        .group:hover .row-hover-reveal {
+            opacity: 1;
+        }
+        
+        /* Multiplayer cursor styles */
+        .cursor-indicator {
+            position: relative;
+        }
+        .cursor-indicator::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: -1px;
+            bottom: -1px;
+            width: 2px;
+            background-color: var(--cursor-color, #0055FF);
+            z-index: 10;
+        }
+        .cursor-indicator::after {
+            content: var(--cursor-name, 'Unknown');
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: var(--cursor-color, #0055FF);
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 10px;
+            padding: 2px 6px;
+            white-space: nowrap;
+            margin-left: 8px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 20;
+        }
+        .cursor-indicator:hover::after {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden bg-background-light dark:bg-background-dark text-text-main">
+<!-- Sidebar -->
+<aside class="w-[240px] flex-shrink-0 border-r border-thin border-border-color bg-surface flex flex-col h-full z-10 hidden md:flex">
+<!-- Logo Area (Part of header visual line) -->
+<div class="h-[48px] flex items-center px-4 border-b border-thin border-border-color">
+<h1 class="font-display font-bold text-xl tracking-tight text-text-main flex items-center gap-2">
+<span class="text-primary material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">swords</span>
+                respondA
+            </h1>
+</div>
+<!-- Navigation Links -->
+<div class="flex flex-col py-4 px-2 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium bg-row-hover text-text-main border-l-2 border-primary" href="#">
+<span class="material-symbols-outlined text-[20px]">shield</span>
+                All Alerts
+                <span class="ml-auto font-mono text-xs text-muted">142</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted hover:bg-row-hover hover:text-text-main border-l-2 border-transparent hover:border-border-color transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">verified_user</span>
+                My Queue
+                <span class="ml-auto font-mono text-xs text-muted">3</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted hover:bg-row-hover hover:text-text-main border-l-2 border-transparent hover:border-border-color transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">warning</span>
+                Escalated
+                <span class="ml-auto font-mono text-xs text-accent">2</span>
+</a>
+</div>
+<!-- Filters Section -->
+<div class="mt-4 px-5 flex flex-col gap-4 flex-grow overflow-y-auto">
+<h3 class="font-display text-xs font-semibold text-muted uppercase tracking-wider mb-2 border-b border-thin border-border-color pb-1">Filters</h3>
+<!-- Severity Filter -->
+<div class="flex flex-col gap-2">
+<h4 class="text-xs font-medium text-text-main">Severity</h4>
+<div class="flex flex-col gap-1.5">
+<label class="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group">
+<div class="w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-[14px] text-primary opacity-0">check</span>
+</div>
+                        Critical
+                        <span class="ml-auto font-mono text-[10px]">24</span>
+</label>
+<label class="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group">
+<div class="w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-[14px] text-primary opacity-0">check</span>
+</div>
+                        High
+                        <span class="ml-auto font-mono text-[10px]">58</span>
+</label>
+<label class="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group">
+<div class="w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors bg-primary border-primary">
+<span class="material-symbols-outlined text-[14px] text-white opacity-100">check</span>
+</div>
+                        Medium
+                        <span class="ml-auto font-mono text-[10px]">42</span>
+</label>
+<label class="flex items-center gap-2 text-sm text-muted cursor-pointer hover:text-text-main group">
+<div class="w-4 h-4 border border-border-color flex items-center justify-center group-hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-[14px] text-primary opacity-0">check</span>
+</div>
+                        Low
+                        <span class="ml-auto font-mono text-[10px]">18</span>
+</label>
+</div>
+</div>
+<!-- Entity Filter -->
+<div class="flex flex-col gap-2 mt-4">
+<h4 class="text-xs font-medium text-text-main">Entity Type</h4>
+<div class="flex flex-wrap gap-2">
+<button class="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors">Endpoint</button>
+<button class="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors bg-row-hover">Network</button>
+<button class="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors">Identity</button>
+<button class="px-2 py-1 text-xs font-medium border border-border-color hover:border-primary hover:text-primary transition-colors">Cloud</button>
+</div>
+</div>
+</div>
+<!-- User Profile Area -->
+<div class="mt-auto border-t border-thin border-border-color p-4">
+<div class="flex items-center gap-3 cursor-pointer hover:bg-row-hover -mx-2 px-2 py-2 transition-colors">
+<div class="w-8 h-8 rounded-full bg-surface border-2 border-primary flex items-center justify-center overflow-hidden shrink-0">
+<img alt="Current User Avatar" class="w-full h-full object-cover" data-alt="Male user portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUI4Ln7EVK0IAzuHd_7WPJfCd7VgHcgSL9DJGv_GjaxlMd0KzxWVRt9-ee_Be9m2eT9wo4qjMw3LvtgreNbMTiGk9iEq6U5_o9L9wVBwvPQQ_nWPDSjmsOq9Z1w8kaAgJJPRnKRQehr_hhd0gCkh36WmCg03j7hVCK90ceYmvrFxK6CpAv7DJHIlIzmnahxYKaxIQicPEJ8SQBHWzsaWdJFXRWyxkXzHJ6tCsDrnDtz7X0MPIEbOGcJXf1J5RbC143u87yC2Loz6EA"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium leading-none mb-1">J. Doe</span>
+<span class="text-xs text-muted font-mono leading-none">Tier 2 Analyst</span>
+</div>
+<span class="material-symbols-outlined ml-auto text-muted text-[18px]">more_vert</span>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col h-full overflow-hidden relative">
+<!-- Top Header -->
+<header class="h-[48px] bg-surface border-b border-thin border-border-color flex items-center justify-between px-6 flex-shrink-0 z-10 w-full sticky top-0">
+<div class="flex items-center gap-4">
+<!-- Mobile Menu Trigger -->
+<button class="md:hidden text-text-main hover:text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h2 class="font-display text-sm font-semibold tracking-wide uppercase text-muted">Triage Queue</h2>
+</div>
+<!-- Multiplayer Presence -->
+<div class="flex items-center gap-3">
+<span class="text-xs text-muted font-mono hidden sm:inline-block">3 Active Analysts</span>
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border-2 border-surface z-30 relative group cursor-pointer ring-1 ring-[#0CA678] bg-surface">
+<img alt="Active User 1" class="w-full h-full object-cover rounded-full" data-alt="Female user portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCIovh6wU4iQ5dIUbsgbVGCE3ebU7882XV7IJni8ZhKcp6oD5ldXj4jtcRGdnrbvGIu3RKNBqp7zKMcxYVZXwIDvMEl2kfyAUvH6WBVAGhuMP-RSB4lYCJ0svhC48OJfLNuDW1nMeG5ODpOpdo2V-UroUplBYqZ-PcBOTkYYukvdmK6BsvheoSkKvS-JFSKTrdHb4pqwq1gSv3MCcaD0CuGoUVoilZvI2B6vBGemPx22yuHJFw7IIhqgm33Ldgc8EwElY2apCJXsAc-"/>
+<div class="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-[#0CA678] rounded-full border border-surface"></div>
+</div>
+<div class="w-6 h-6 rounded-full border-2 border-surface z-20 relative group cursor-pointer ring-1 ring-primary bg-surface">
+<img alt="Active User 2" class="w-full h-full object-cover rounded-full" data-alt="Male user portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuADIpQUNlrS6fTlYnUzQJ4UhiHnq04wMAbjSh3iQipnwF_PsG3hX8z5lWuN9yH6GbimKi7VJzHJtdeQg0LoXjTy7D9vc_Pacd2gFU3LuoIvXkkVFvAf6WwXbN9lnghB0NBwpP3kiMUyk5yTSKTepP1u1ElmBZ5hrHoDAriI5uAC3-lDz4lKr1MQA85CeoWi-37SA3flAJemGALC5jqO7ahb8XMeiW-YBokEDew_vX8xdsGSMytJPUS9gJ7J4TVIywYeHoJ9ztcNNaZd"/>
+<div class="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full border border-surface"></div>
+</div>
+<div class="w-6 h-6 rounded-full border-2 border-surface z-10 relative group cursor-pointer ring-1 ring-accent bg-surface">
+<div class="w-full h-full rounded-full bg-row-hover flex items-center justify-center text-[10px] font-mono font-bold text-text-main">SJ</div>
+<div class="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-accent rounded-full border border-surface"></div>
+</div>
+</div>
+<button class="w-8 h-8 flex items-center justify-center border border-border-color text-muted hover:text-text-main hover:border-text-main transition-colors ml-2">
+<span class="material-symbols-outlined text-[18px]">search</span>
+</button>
+</div>
+</header>
+<!-- Alert Grid Area -->
+<div class="flex-1 overflow-auto bg-surface relative">
+<!-- Table Header -->
+<div class="sticky top-0 bg-background-light border-b border-thin border-border-color z-20">
+<div class="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-2 text-xs font-display text-muted uppercase tracking-wider h-10">
+<div class="pl-2">Severity</div>
+<div>Alert ID</div>
+<div>Title</div>
+<div class="hidden md:block">Entity</div>
+<div class="hidden md:block text-right pr-4">Assignee</div>
+<div class="text-right pr-2">Actions</div>
+</div>
+</div>
+<!-- Table Body -->
+<div class="flex flex-col">
+<!-- Row 1: Critical, Multiplayer active -->
+<div class="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer cursor-indicator" style="--cursor-color: #E03131; --cursor-name: 'S. Jenkins';">
+<div class="pl-2">
+<span class="inline-flex items-center justify-center px-1.5 py-0.5 border border-accent text-accent font-mono text-[10px] font-bold tracking-wider">CRIT</span>
+</div>
+<div class="font-mono text-xs text-text-main">ALT-8492</div>
+<div class="font-medium text-sm text-text-main pr-4 truncate" title="Ransomware Behavior Detected: Rapid File Encryption">
+                        Ransomware Behavior Detected: Rapid File Encryption
+                    </div>
+<div class="hidden md:block text-sm text-muted font-mono truncate">DESKTOP-X92M</div>
+<div class="hidden md:flex justify-end pr-4">
+<div class="w-6 h-6 rounded-full border border-surface overflow-hidden">
+<div class="w-full h-full bg-row-hover flex items-center justify-center text-[10px] font-mono font-bold text-text-main">SJ</div>
+</div>
+</div>
+<div class="text-right pr-2">
+<button class="row-hover-reveal font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors">Open</button>
+</div>
+</div>
+<!-- Row 2 -->
+<div class="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer">
+<div class="pl-2">
+<span class="inline-flex items-center justify-center px-1.5 py-0.5 border border-[#F59F00] text-[#F59F00] font-mono text-[10px] font-bold tracking-wider">HIGH</span>
+</div>
+<div class="font-mono text-xs text-text-main">ALT-8491</div>
+<div class="font-medium text-sm text-text-main pr-4 truncate" title="Anomalous Login: Impossible Travel">
+                        Anomalous Login: Impossible Travel
+                    </div>
+<div class="hidden md:block text-sm text-muted font-mono truncate">jdoe@company.com</div>
+<div class="hidden md:flex justify-end pr-4">
+<span class="text-xs text-muted font-mono italic">Unassigned</span>
+</div>
+<div class="text-right pr-2">
+<button class="row-hover-reveal font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors">Claim</button>
+</div>
+</div>
+<!-- Row 3: Multiplayer active -->
+<div class="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer cursor-indicator" style="--cursor-color: #0CA678; --cursor-name: 'A. Chen';">
+<div class="pl-2">
+<span class="inline-flex items-center justify-center px-1.5 py-0.5 border border-[#F59F00] text-[#F59F00] font-mono text-[10px] font-bold tracking-wider">HIGH</span>
+</div>
+<div class="font-mono text-xs text-text-main">ALT-8490</div>
+<div class="font-medium text-sm text-text-main pr-4 truncate" title="Data Exfiltration: Large Upload to Unknown IP">
+                        Data Exfiltration: Large Upload to Unknown IP
+                    </div>
+<div class="hidden md:block text-sm text-muted font-mono truncate">192.168.1.105</div>
+<div class="hidden md:flex justify-end pr-4">
+<div class="w-6 h-6 rounded-full border border-surface overflow-hidden">
+<img alt="Assignee Avatar" class="w-full h-full object-cover rounded-full" data-alt="Female user portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRAhnYEv2lqlqc5rYjW62pjF5ltkuoTB0wGgTKREguJVl4z_6pEsy9vYx-NvXu-2Dm0FNgdPJ8Rv4bLy65eJ32Ypo6mBZs4GQcFd2tNu7qCv4jfg4IMZwlUnAgVtjs9uRF10Bo_owyivY-dDbDmQECYMLMfga-NC8fo9_R3_kWkFUElShvrZrDh9hT3VyFtdA8at22SYSFreD4z1YBLtZau9SqHTMOC1PqHkhQLLDfhTd3mt3Il5Ck6qRZvhB5S26I1_O9B5YmXeD2"/>
+</div>
+</div>
+<div class="text-right pr-2">
+<button class="row-hover-reveal font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors">Open</button>
+</div>
+</div>
+<!-- Row 4 -->
+<div class="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer bg-row-hover border-l-2 border-l-primary">
+<div class="pl-[6px]">
+<span class="inline-flex items-center justify-center px-1.5 py-0.5 border border-[#FCC419] text-[#E67700] font-mono text-[10px] font-bold tracking-wider bg-[#FFF9DB]">WARN</span>
+</div>
+<div class="font-mono text-xs text-text-main">ALT-8489</div>
+<div class="font-medium text-sm text-text-main pr-4 truncate" title="Multiple Failed SSH Login Attempts">
+                        Multiple Failed SSH Login Attempts
+                    </div>
+<div class="hidden md:block text-sm text-muted font-mono truncate">SRV-PROD-DB1</div>
+<div class="hidden md:flex justify-end pr-4">
+<div class="w-6 h-6 rounded-full border border-surface overflow-hidden">
+<img alt="Current User" class="w-full h-full object-cover rounded-full" data-alt="Male user portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZL_QKZYX19hCrHYqhxJiD9fr9Gl0tXsI8xtzzgFQ10jFraI4NZ4r5nxGelD1I5Xs8s-fDjFyPm2EU8esgs6iDx9zy2vn9fg7iQtM9gm31EKgmZXShwwOD2Qltdaqh-h67iphAz_hfB_8JSdPdkU9hHLeyHTwGClEX5IlFvoX4cdLLsUFvXx-8gMrReIsVAT8K0uw9f32__QE8w7fz-5uTz9eVQ127m7v6w9E9RwOj26o_usc8I8Kj8UoMRwZURQHfjrL6KL33M8K1"/>
+</div>
+</div>
+<div class="text-right pr-2">
+<button class="font-display text-[11px] font-bold uppercase tracking-wider text-white border border-primary bg-primary px-3 py-1">Open</button>
+</div>
+</div>
+<!-- Row 5 -->
+<div class="grid grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] md:grid-cols-[80px_100px_minmax(250px,_1fr)_minmax(150px,_200px)_120px_100px] lg:grid-cols-[80px_100px_minmax(300px,_1fr)_minmax(150px,_200px)_120px_100px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer">
+<div class="pl-2">
+<span class="inline-flex items-center justify-center px-1.5 py-0.5 border border-muted text-muted font-mono text-[10px] font-bold tracking-wider">INFO</span>
+</div>
+<div class="font-mono text-xs text-text-main">ALT-8488</div>
+<div class="font-medium text-sm text-text-main pr-4 truncate" title="New Admin Account Created">
+                        New Admin Account Created
+                    </div>
+<div class="hidden md:block text-sm text-muted font-mono truncate">Azure AD</div>
+<div class="hidden md:flex justify-end pr-4">
+<span class="text-xs text-muted font-mono italic">Unassigned</span>
+</div>
+<div class="text-right pr-2">
+<button class="row-hover-reveal font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-3 py-1 hover:bg-primary hover:text-white transition-colors">Claim</button>
+</div>
+</div>
+</div>
+<!-- Empty State (Hidden by default, shown here for completeness as per PRD) 
+            <div class="absolute inset-0 flex items-center justify-center bg-surface z-0 hidden">
+                <p class="font-display text-2xl font-semibold text-muted">Queue Clear. En Garde.</p>
+            </div>
+            -->
+</div>
+</main>
+</body></html>

@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user is accessing their own data (if applicable)
+    // function isOwner(userId) {
+    //   return request.auth.uid == userId;
+    // }
+
+    // Global rule: deny all by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Alerts collection
+    match /alerts/{alertId} {
+      // Allow authenticated users to read and write alerts
+      // In a more complex setup, you might check for specific roles in the user's custom claims
+      allow read, write: if isAuthenticated();
+    }
+
+    // Incidents collection
+    match /incidents/{incidentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // User profiles or presence
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Real-time presence
+    match /presence/{userId} {
+      allow read: if isAuthenticated();
+      // In a real app we might want to ensure they only write their own ID
+      // but for this demo allow any authenticated write
+      allow write, delete: if isAuthenticated();
+    }
+
+    // Incident timeline
+    match /timeline/{eventId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}
