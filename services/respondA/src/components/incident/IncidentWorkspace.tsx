@@ -214,7 +214,10 @@ export const IncidentWorkspace = () => {
             {/* Sub-header */}
             <div className="h-14 border-b border-border bg-surface px-6 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Link to="/" className="p-2 hover:bg-muted rounded-full transition-colors text-muted hover:text-text">
+                    <Link 
+                        to="/incidents"
+                        className="p-2 hover:bg-muted rounded-full transition-colors text-muted hover:text-text"
+                    >
                         <ChevronLeft className="w-5 h-5" />
                     </Link>
                     <div className="space-y-0.5 min-w-[300px]">
