@@ -23,10 +23,11 @@ export const ActionCanvas = ({
     onResolve,
     onAction
 }: ActionCanvasProps) => {
-    useKey('Escape', () => {
-        onClose();
-
-    });
+    useKey("Escape", () => {
+        if (alert !== null) {
+            onClose();
+        }
+    }, {}, [alert, onClose]);
 
     return (
         <AnimatePresence>
