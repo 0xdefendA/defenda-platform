@@ -6,6 +6,7 @@ import { SeverityBadge } from '../ui/SeverityBadge';
 import { TelemetryBlock } from './TelemetryBlock';
 import { ParryRiposte } from './ParryRiposte';
 import { AlertResolutionForm } from './AlertResolution';
+import { useKey } from 'react-use';
 
 interface ActionCanvasProps {
     alert: Alert | null;
@@ -22,6 +23,11 @@ export const ActionCanvas = ({
     onResolve,
     onAction
 }: ActionCanvasProps) => {
+    useKey('Escape', () => {
+        onClose();
+
+    });
+
     return (
         <AnimatePresence>
             {alert && (
