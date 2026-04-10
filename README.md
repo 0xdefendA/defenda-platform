@@ -18,13 +18,13 @@ The platform uses GCP's fully managed, serverless offerings to handle unstructur
 
 The platform follows a microservices architecture divided into three core engines:
 
-1. 🟢 **`ingestA` (Data Lake Engine) - Active**
+1. 🟢 **`ingestA` (Data Lake Engine)**
    A high-throughput Cloud Run service triggered by Pub/Sub push subscriptions. It receives unstructured JSON logs, passes them through a flexible Python plugin architecture for normalization and enrichment, and streams the structured data directly into BigQuery.
 
-2. ⏳ **`alertA` (Alerting Engine) - Active**
+2. 🟢 **`alertA` (Alerting Engine)**
    A continuous detection engine that queries the BigQuery data lake against defined security signatures to identify anomalies and updates alert states in real-time in Firestore.
 
-3. ⏳ **`respondA` (User Interface) - Active**
+3. 🟢 **`respondA` (User Interface)**
    A centralized dashboard for security analysts to view, triage, and resolve alerts, utilizing Firestore's real-time synchronization capabilities.
 
 ## Key Features
