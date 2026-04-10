@@ -13,16 +13,19 @@ import { TaskList } from './TaskList';
 import { SummaryModal } from './SummaryModal';
 import { generateMarkdownSummary } from '../../lib/summary';
 import { LiveTimeline } from '../timeline/LiveTimeline';
-import type { Likelihood } from '../../types';
+import { TimelineEditor } from '../timeline/TimelineEditor';
+import { InlineEdit } from '../ui/InlineEdit';
+import type { Likelihood, TimelineEvent } from '../../types';
 
 export const IncidentWorkspace = () => {
     const { id } = useParams<{ id: string }>();
     const { user } = useAuth();
     const [isSummaryOpen, setIsSummaryOpen] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
     const { incident, loading } = useIncident(id);
     const { presences } = usePresence(id || null);
-    const { events, updateEvent, deleteEvent } = useTimeline(id || null);
+    const { events, updateEventDetails, reorderEvents, deleteEvent } = useTimeline(id || null);
 
     if (loading) return <div className="p-8">Loading incident...</div>;
     if (!incident) return <div className="p-8 text-accent">Incident not found</div>;
@@ -207,6 +210,21 @@ export const IncidentWorkspace = () => {
         }
     };
 
+    const handleAddHistoricalEvent = async (details: Partial<TimelineEvent>) => {
+        if (!id || !user) return;
+        try {
+            await addDoc(collection(db, 'timeline'), {
+                contextId: id,
+                type: 'note',
+                actorId: user.displayName || user.email?.split('@')[0] || 'Analyst',
+                timestamp: Date.now(),
+                ...details
+            });
+        } catch (err) {
+            console.error('Error adding historical event:', err);
+        }
+    };
+
     return (
         <div className="flex flex-col h-screen bg-background">
             <Header presences={presences} />
@@ -292,8 +310,7 @@ export const IncidentWorkspace = () => {
                     <LiveTimeline 
                         events={events} 
                         onSendMessage={handleSendMessage} 
-                        onEdit={updateEvent}
-                        onDelete={deleteEvent}
+                        onOpenEditor={() => setIsEditorOpen(true)}
                     />
                 </div>
 
@@ -338,6 +355,17 @@ export const IncidentWorkspace = () => {
                 onClose={() => setIsSummaryOpen(false)}
                 markdown={generateMarkdownSummary(incident, events)}
             />
+
+            {isEditorOpen && (
+                <TimelineEditor
+                    events={events}
+                    onUpdateEvent={updateEventDetails}
+                    onReorderEvents={reorderEvents}
+                    onDeleteEvent={deleteEvent}
+                    onAddEvent={handleAddHistoricalEvent}
+                    onClose={() => setIsEditorOpen(false)}
+                />
+            )}
         </div>
     );
 };

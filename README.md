@@ -84,3 +84,47 @@ Deployment is entirely managed via Infrastructure as Code (Terraform) combined w
 ```
 cd services/ingestA/src && PYTHONPATH=. uv run pytest ../tests/ && cd ../../alertA && PYTHONPATH=src uv run pytest tests/
 ```
+
+
+
+### Running locally
+
+To get your Firebase API Key and other configuration details, follow these steps in the Firebase Console:
+
+### 1. Access the Firebase Console
+Go to console.firebase.google.com (https://console.firebase.google.com/) and sign in with your Google account.
+
+### 2. Select Your Project
+Click on the project tile for your defenda-platform (or whichever project you are using for this deployment).
+
+### 3. Open Project Settings
+Click the Gear icon (⚙️) next to "Project Overview" in the left-hand sidebar and select Project settings.
+
+### 4. Locate Your Web App
+Under the General tab, scroll down to the Your apps section:
+• If you already have a Web App: You will see it listed there.
+• If you don't have one: Click the </> (Web) icon to register a new app. Give it a nickname (e.g., respondA-ui) and click Register app.
+
+### 5. Copy the Configuration Object
+Once the app is registered, look for the SDK setup and configuration section. Select the Config radio button. You will see an object like this:
+
+const firebaseConfig = {
+  apiKey: "AIzaSy...",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:abcdef..."
+};
+
+### 6. Update Your Local Environment
+Create a file named .env in services/respondA/ and map these values to the VITE_ prefixed variables:
+
+VITE_FIREBASE_API_KEY=AIzaSy...
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890
+VITE_FIREBASE_APP_ID=1:1234567890:web:abcdef...
+
+`npm run dev` in that directory to start the web ui

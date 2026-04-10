@@ -40,7 +40,7 @@ export const generateMarkdownSummary = (incident: Incident, events: TimelineEven
     if (events.length > 0) {
         markdown += `## Key Timeline Events\n`;
         events.forEach(e => {
-            markdown += `- \`${format(e.timestamp, 'HH:mm:ss')}\` **${e.actorId}**: ${e.message}\n`;
+            markdown += `- \`${format(e.timestamp, 'yyyy-MM-dd HH:mm:ss')}\` **${e.actorId}**: ${e.message}\n`;
         });
     }
 
