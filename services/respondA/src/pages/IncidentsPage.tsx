@@ -95,7 +95,11 @@ export const IncidentsPage = () => {
                                 className="grid grid-cols-[100px_minmax(300px,_1fr)_150px_120px_120px_100px] items-center px-6 py-4 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer"
                             >
                                 <div className="font-mono text-xs text-text-main truncate pr-4">
-                                    {incident.id.split('-').pop()?.toUpperCase()}
+                                    {incident.id
+                                        .replace(/^incident-/, '')
+                                        .replace(/-incident$/, '')
+                                        .substring(0, 8)
+                                        .toUpperCase()}
                                 </div>
                                 <div className="font-medium text-sm text-text-main flex items-center gap-2">
                                     <ShieldAlert className="w-4 h-4 text-primary" />

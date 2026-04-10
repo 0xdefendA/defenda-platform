@@ -255,7 +255,7 @@ export const IncidentWorkspace = () => {
                             </h1>
                         )}
                         <div className="flex items-center gap-3 text-[10px] text-muted font-mono uppercase tracking-widest">
-                            <span>Incident ID: {incident.id}</span>
+                            <span>Incident ID: {incident.id.replace(/^incident-/, '').replace(/-incident$/, '').substring(0, 8).toUpperCase()}</span>
                             {incident.slackLink && (
                                 <a href={incident.slackLink} target="_blank" className="flex items-center gap-1 text-primary hover:underline">
                                     <MessageSquare className="w-3 h-3" /> Slack

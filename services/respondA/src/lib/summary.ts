@@ -6,7 +6,7 @@ export const generateMarkdownSummary = (incident: Incident, events: TimelineEven
 
     let markdown = `# Incident Summary: ${incident.title}\n`;
     markdown += `**Generated At:** ${format(now, 'yyyy-MM-dd HH:mm:ss')}\n`;
-    markdown += `**Incident ID:** ${incident.id}\n\n`;
+    markdown += `**Incident ID:** ${incident.id.replace(/^incident-/, '').replace(/-incident$/, '').substring(0, 8).toUpperCase()}\n\n`;
 
     markdown += `## Status Overview\n`;
     markdown += `- **Theories:** ${incident.theories?.length || 0} active hypotheses\n`;
