@@ -1,19 +1,17 @@
-import { format } from 'date-fns';
-import { Send, Pencil, Trash2 } from 'lucide-react';
+import { formatInTimeZone } from 'date-fns-tz';
+import { Send, Settings2, Globe } from 'lucide-react';
 import { useState } from 'react';
 import type { TimelineEvent } from '../../types';
-import { InlineEdit } from '../ui/InlineEdit';
 
 interface LiveTimelineProps {
     events: TimelineEvent[];
     onSendMessage: (message: string) => void;
-    onEdit?: (id: string, message: string) => void;
-    onDelete?: (id: string) => void;
+    onOpenEditor: () => void;
 }
 
-export const LiveTimeline = ({ events, onSendMessage, onEdit, onDelete }: LiveTimelineProps) => {
+export const LiveTimeline = ({ events, onSendMessage, onOpenEditor }: LiveTimelineProps) => {
     const [message, setMessage] = useState('');
-    const [editingId, setEditingId] = useState<string | null>(null);
+    const [useLocalTime, setUseLocalTime] = useState(false);
 
     const handleSend = () => {
         if (!message.trim()) return;
@@ -21,8 +19,29 @@ export const LiveTimeline = ({ events, onSendMessage, onEdit, onDelete }: LiveTi
         setMessage('');
     };
 
+    const currentTimezone = useLocalTime ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
+
     return (
         <div className="flex flex-col h-full overflow-hidden">
+            <div className="flex items-center justify-between mb-4 bg-muted/30 p-2 rounded-lg border border-border">
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => setUseLocalTime(!useLocalTime)}
+                        className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-background border border-border rounded hover:bg-muted transition-colors"
+                    >
+                        <Globe size={10} />
+                        {useLocalTime ? 'Local' : 'UTC'}
+                    </button>
+                </div>
+                <button 
+                    onClick={onOpenEditor}
+                    className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded hover:bg-primary/20 transition-colors"
+                >
+                    <Settings2 size={10} />
+                    Open Editor
+                </button>
+            </div>
+
             <div className="flex-1 overflow-auto space-y-4 pr-2 custom-scrollbar">
                 <div className="relative pl-8">
                     {/* Vertical Track Line */}
@@ -46,7 +65,7 @@ export const LiveTimeline = ({ events, onSendMessage, onEdit, onDelete }: LiveTi
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-mono text-muted uppercase tracking-widest">
-                                                {format(event.timestamp, 'HH:mm:ss')}
+                                                {formatInTimeZone(event.timestamp, currentTimezone, 'yyyy-MM-dd HH:mm:ss')}
                                                 {event.editedAt && (
                                                     <span className="ml-2 italic">(edited)</span>
                                                 )}
@@ -57,46 +76,10 @@ export const LiveTimeline = ({ events, onSendMessage, onEdit, onDelete }: LiveTi
                                                 </span>
                                             )}
                                         </div>
-                                        
-                                        {event.type !== 'system' && editingId !== event.id && (
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => setEditingId(event.id)}
-                                                    className="p-1 hover:bg-muted rounded text-muted hover:text-text transition-colors"
-                                                    title="Edit note"
-                                                >
-                                                    <Pencil size={12} />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (confirm('Are you sure you want to delete this note?')) {
-                                                            onDelete?.(event.id);
-                                                        }
-                                                    }}
-                                                    className="p-1 hover:bg-destructive/10 rounded text-muted hover:text-destructive transition-colors"
-                                                    title="Delete note"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                     <div className={`text-sm leading-relaxed p-2 rounded-lg border 
                     ${event.type === 'system' ? 'bg-muted/5 border-transparent text-muted italic' : 'bg-surface border-border shadow-sm'}`}>
-                                        {editingId === event.id ? (
-                                            <InlineEdit
-                                                value={event.message}
-                                                multiline
-                                                onSave={(val) => {
-                                                    onEdit?.(event.id, val);
-                                                    setEditingId(null);
-                                                }}
-                                                onCancel={() => setEditingId(null)}
-                                                className="text-sm"
-                                            />
-                                        ) : (
-                                            event.message
-                                        )}
+                                        {event.message}
                                     </div>
                                 </div>
                             </div>
