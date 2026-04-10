@@ -70,4 +70,6 @@ export interface TimelineEvent {
     message: string;
     timestamp: number;
     editedAt?: number;
+    sortOrder?: number;
+    timezone?: string;
 }
