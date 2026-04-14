@@ -8,7 +8,7 @@ class message(object):
 
     def __init__(self):
         """
-        handle gsuite login activity record
+        handle google workspace admin activity records
         """
 
         self.registration = ["kind"]
@@ -26,8 +26,8 @@ class message(object):
         ):
             return (message, metadata)
 
-        message["source"] = "gsuite"
-        message["tags"].append("gsuite")
+        message["source"] = "google_workspace"
+        message["tags"].append("google_workspace")
 
         # clean up ipaddress field
         if "ipaddress" in message["details"]:
@@ -51,7 +51,9 @@ class message(object):
         )
 
         # set category
-        message["category"] = "authentication"
+        message["category"] = dot_message.get(
+            "details.id.applicationname", "google_workspace"
+        )
 
         # success/failure
         if "fail" in message["summary"]:
