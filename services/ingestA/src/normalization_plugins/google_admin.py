@@ -44,11 +44,55 @@ class message(object):
         if dot_message.get("details.actor.email", None):
             message["details"]["user"] = dot_message.get("details.actor.email", "")
 
+        # extract extra info for summary
+        extra_info = None
+        category = dot_message.get("details.id.applicationname", "")
+        events = dot_message.get("details.events", [])
+        if events:
+            event = events[0]
+            params = event.get("parameters", [])
+
+            def get_param(parameters, name):
+                for p in parameters:
+                    p_name = p.get("name")
+                    if p_name and p_name.lower() == name.lower():
+                        for k in [
+                            "value",
+                            "boolvalue",
+                            "intvalue",
+                            "multivalue",
+                            "messagevalue",
+                            "multimessagevalue",
+                        ]:
+                            if k in p:
+                                return p[k]
+                return None
+
+            if category == "gmail":
+                msg_info = get_param(params, "message_info")
+                if msg_info and "parameter" in msg_info:
+                    extra_info = get_param(msg_info["parameter"], "subject")
+            elif category == "calendar":
+                extra_info = get_param(params, "event_title")
+            elif category == "mobile":
+                extra_info = get_param(params, "device_model") or get_param(params, "device_type")
+            elif category == "token":
+                extra_info = get_param(params, "app_name")
+            elif category == "access_evaluation":
+                extra_info = get_param(params, "scopes_requested") or get_param(params, "service_account")
+                if isinstance(extra_info, list) and len(extra_info) > 0:
+                    extra_info = extra_info[0]
+
+        if extra_info:
+            message["details"]["extra_info"] = extra_info
+
         # set summary
-        message["summary"] = chevron.render(
-            "{{details.user}} {{details.events.0.name}} from IP {{details.sourceipaddress}}",
-            message,
-        )
+        summary_template = "{{details.user}} {{details.events.0.name}}"
+        if extra_info:
+            summary_template += " ({{details.extra_info}})"
+        summary_template += " from IP {{details.sourceipaddress}}"
+
+        message["summary"] = chevron.render(summary_template, message)
 
         # set category
         message["category"] = dot_message.get(
