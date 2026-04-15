@@ -17,7 +17,7 @@ logger = logging.getLogger()
 
 class TestPluginGsuiteLogins(object):
     def setup_method(self):
-        from normalization_plugins.gsuite_login import message
+        from normalization_plugins.google_admin import message
 
         self.plugin = message()
         with open(
@@ -69,6 +69,6 @@ class TestPluginGsuiteLogins(object):
             == "someone@somewhere.com login_success from IP 123.456.253.226"
         )
         assert result["details"]["sourceipaddress"] == "123.456.253.226"
-        assert result["category"] == "authentication"
-        assert result["source"] == "gsuite"
+        assert result["category"] == "login"
+        assert result["source"] == "google_workspace"
         assert result["details"]["success"] == True
