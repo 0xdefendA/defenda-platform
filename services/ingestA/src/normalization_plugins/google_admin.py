@@ -75,11 +75,15 @@ class message(object):
             elif category == "calendar":
                 extra_info = get_param(params, "event_title")
             elif category == "mobile":
-                extra_info = get_param(params, "device_model") or get_param(params, "device_type")
+                extra_info = get_param(params, "device_model") or get_param(
+                    params, "device_type"
+                )
             elif category == "token":
                 extra_info = get_param(params, "app_name")
             elif category == "access_evaluation":
-                extra_info = get_param(params, "scopes_requested") or get_param(params, "service_account")
+                extra_info = get_param(params, "scopes_requested") or get_param(
+                    params, "service_account"
+                )
                 if isinstance(extra_info, list) and len(extra_info) > 0:
                     extra_info = extra_info[0]
 
@@ -90,7 +94,8 @@ class message(object):
         summary_template = "{{details.user}} {{details.events.0.name}}"
         if extra_info:
             summary_template += " ({{details.extra_info}})"
-        summary_template += " from IP {{details.sourceipaddress}}"
+        if "sourceipaddress" in message["details"]:
+            summary_template += " from IP {{details.sourceipaddress}}"
 
         message["summary"] = chevron.render(summary_template, message)
 
