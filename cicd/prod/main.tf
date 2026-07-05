@@ -112,6 +112,13 @@ locals {
 
   responda_hash       = sha1(join("", [for f in fileset(path.root, "../../services/respondA/**") : filesha1(f)]))
   responda_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/responda-service:${local.responda_hash}"
+
+  querya_hash = sha1(join("", [
+    for f in fileset(path.root, "../../services/queryA/**") : filesha1(f)
+    ], [
+    for f in fileset(path.root, "../../shared/**") : filesha1(f)
+  ]))
+  querya_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/querya-service:${local.querya_hash}"
 }
 
 resource "terraform_data" "ingesta_build" {
@@ -168,6 +175,33 @@ resource "terraform_data" "alerta_build" {
   ]
 }
 
+resource "terraform_data" "querya_build" {
+  input = local.querya_image_name # the image name with tag
+
+  triggers_replace = [
+    local.querya_hash
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+        gcloud builds submit ../.. \
+          --config ../../services/queryA/cloudbuild.yaml \
+          --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
+          --service-account=${google_service_account.cloudbuild_sa.id} \
+          --project=${local.project_id}
+      EOT
+    environment = {
+      PROJECT_ID = local.project_id
+    }
+  }
+  depends_on = [
+    google_artifact_registry_repository.image-repo,
+    google_storage_bucket.cloudbuild_artifacts,
+    google_project_service.cloudbuild_api,
+    google_project_iam_member.sa_roles
+  ]
+}
+
 resource "terraform_data" "responda_build" {
   input = local.responda_image_name # the image name with tag
 
@@ -179,7 +213,7 @@ resource "terraform_data" "responda_build" {
     command = <<EOT
         gcloud builds submit ../.. \
           --config ../../services/respondA/cloudbuild.yaml \
-          --substitutions="_IMAGE=${self.input},_LOCATION=${local.location},_FIREBASE_AUTH_DOMAIN=${local.project_id}.firebaseapp.com,_FIREBASE_PROJECT_ID=${local.project_id},_FIREBASE_STORAGE_BUCKET=${local.project_id}.appspot.com,_FIREBASE_MESSAGING_SENDER_ID=${var.firebase_messaging_sender_id},_FIREBASE_APP_ID=${var.firebase_app_id}" \
+          --substitutions="_IMAGE=${self.input},_LOCATION=${local.location},_FIREBASE_AUTH_DOMAIN=${local.project_id}.firebaseapp.com,_FIREBASE_PROJECT_ID=${local.project_id},_FIREBASE_STORAGE_BUCKET=${local.project_id}.appspot.com,_FIREBASE_MESSAGING_SENDER_ID=${var.firebase_messaging_sender_id},_FIREBASE_APP_ID=${var.firebase_app_id},_QUERYA_URL=${google_cloud_run_v2_service.queryA_service.uri}" \
           --service-account=${google_service_account.cloudbuild_sa.id} \
           --project=${local.project_id}
       EOT
@@ -241,6 +275,34 @@ resource "google_cloud_run_v2_service" "alertA_service" {
   }
 }
 
+resource "google_cloud_run_v2_service" "queryA_service" {
+  project  = var.project_id
+  name     = "querya-service"
+  location = var.region
+
+  template {
+    service_account = module.gcp_project_setup.querya_sa_email
+    containers {
+      image = terraform_data.querya_build.output
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+      # Lock CORS down to the respondA origin once known; "*" is safe-ish
+      # here because auth is enforced per-request via Firebase ID tokens.
+      env {
+        name  = "CORS_ORIGINS"
+        value = "*"
+      }
+    }
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+}
+
 resource "google_cloud_run_v2_service" "respondA_service" {
   project  = var.project_id
   name     = "responda-service"
@@ -278,6 +340,14 @@ resource "google_cloud_run_v2_service_iam_member" "alerta_invoker" {
   name     = google_cloud_run_v2_service.alertA_service.name
   role     = "roles/run.invoker"
   member   = "allUsers" # Required for pubsub and scheduler without complex OIDC routing
+}
+
+resource "google_cloud_run_v2_service_iam_member" "querya_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.queryA_service.name
+  role     = "roles/run.invoker"
+  member   = "allUsers" # Auth enforced in-app via Firebase ID token verification
 }
 
 resource "google_cloud_run_v2_service_iam_member" "responda_invoker" {

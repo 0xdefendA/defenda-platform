@@ -23,6 +23,11 @@ output "responda_sa_email" {
   value       = google_service_account.responda_sa.email
 }
 
+output "querya_sa_email" {
+  description = "The email of the queryA service account."
+  value       = google_service_account.querya_sa.email
+}
+
 output "pubsub_topic_id" {
   description = "The ID of the Pub/Sub topic for event ingestion"
   value       = google_pubsub_topic.defenda_event_ingest.id

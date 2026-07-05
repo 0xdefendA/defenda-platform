@@ -236,6 +236,15 @@ resource "google_service_account" "responda_sa" {
   ]
 }
 
+resource "google_service_account" "querya_sa" {
+  project      = var.project_id
+  account_id   = "querya-sa"
+  display_name = "queryA Service Account"
+  depends_on = [
+    google_project_service.iam_api
+  ]
+}
+
 # IAM for BigQuery and Firestore
 resource "google_project_iam_member" "ingesta_bigquery_dataeditor" {
   project = var.project_id
@@ -273,6 +282,26 @@ resource "google_project_iam_member" "alerta_datastore_user" {
   depends_on = [
     google_service_account.alerta_sa,
     google_firestore_database.database
+  ]
+}
+
+# queryA is read-only against BigQuery: ad-hoc analyst queries only
+resource "google_project_iam_member" "querya_bigquery_dataviewer" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.querya_sa.email}"
+  depends_on = [
+    google_service_account.querya_sa,
+    google_bigquery_dataset.defenda_data_lake
+  ]
+}
+
+resource "google_project_iam_member" "querya_bigquery_jobuser" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${google_service_account.querya_sa.email}"
+  depends_on = [
+    google_service_account.querya_sa
   ]
 }
 

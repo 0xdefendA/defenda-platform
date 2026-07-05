@@ -48,5 +48,10 @@ service cloud.firestore {
     match /timeline/{eventId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Detection rules created from the Events UI (YAML payloads read by alertA)
+    match /rules/{ruleId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

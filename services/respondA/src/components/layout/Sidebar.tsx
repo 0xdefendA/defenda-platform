@@ -1,6 +1,6 @@
 import { useAuth } from '../../hooks/useAuth';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, LayoutGrid, ShieldAlert, Zap } from 'lucide-react';
+import { Plus, LayoutGrid, Radar, ShieldAlert, Zap } from 'lucide-react';
 
 interface SidebarProps {
     severityFilter?: string[];
@@ -26,6 +26,8 @@ export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilt
     const location = useLocation();
     const isAlertsPage = location.pathname === '/';
     const isIncidentsPage = location.pathname === '/incidents';
+    const isEventsPage = location.pathname === '/events';
+    const isDetectionsPage = location.pathname === '/detections';
 
     const severities = counts ? [
         { id: 'critical', label: 'Critical', count: counts.critical },
@@ -62,10 +64,20 @@ export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilt
                     <ShieldAlert className="w-4 h-4" />
                     Incidents
                 </Link>
-                <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-muted/40 cursor-not-allowed">
+                <Link
+                    to="/events"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${isEventsPage ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                >
                     <Zap className="w-4 h-4" />
                     Events
-                </div>
+                </Link>
+                <Link
+                    to="/detections"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${isDetectionsPage ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                >
+                    <Radar className="w-4 h-4" />
+                    Detections
+                </Link>
             </div>
 
             {/* Contextual Action: Create Incident (Only on Incidents Page) */}

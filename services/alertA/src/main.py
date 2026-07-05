@@ -36,6 +36,7 @@ except Exception as e:
 
 def load_rules():
     rules = []
+    # File-based rules (detections-as-code, shipped in the container)
     # Assuming running from services/alertA
     rules_dir = os.path.join(os.path.dirname(__file__), "../rules/*.yml")
     for rule_file in glob.glob(rules_dir):
@@ -45,6 +46,27 @@ def load_rules():
                 rules.append(rule)
             except Exception as e:
                 logger.error(f"Error loading rule {rule_file}: {e}")
+
+    # Firestore-based rules (created live from the respondA UI).
+    # Documents in the `rules` collection carry the same YAML format in a
+    # `yaml` field. A bad Firestore rule is logged and skipped so it can
+    # never break file-based rules.
+    try:
+        for doc in fs_client.collection("rules").stream():
+            data = doc.to_dict() or {}
+            if not data.get("enabled", True):
+                continue
+            try:
+                rule = yaml.safe_load(data.get("yaml", ""))
+                if isinstance(rule, dict) and rule.get("alert_name"):
+                    rules.append(rule)
+                else:
+                    logger.error(f"Firestore rule {doc.id} is not a valid rule document")
+            except Exception as e:
+                logger.error(f"Error parsing Firestore rule {doc.id}: {e}")
+    except Exception as e:
+        logger.error(f"Error loading rules from Firestore: {e}")
+
     return rules
 
 
