@@ -8,7 +8,7 @@ import { usePresence } from '../hooks/usePresence';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
 import { TriageQueue } from '../components/triage/TriageQueue';
-import { AlertFilterBar } from '../components/triage/AlertFilterBar';
+import { FilterBar } from '../components/ui/FilterBar';
 import { ActionCanvas } from '../components/canvas/ActionCanvas';
 import type { Alert, AlertResolution, AlertImpact } from '../types';
 import type { CriteriaRow, JsonPath } from '../lib/rules';
@@ -218,11 +218,17 @@ export const TriagePage = () => {
                     onSearchChange={setSearchTerm}
                 />
 
-                <AlertFilterBar
+                <FilterBar
                     rows={filterRows}
                     onRowsChange={setFilterRows}
                     matchedCount={filteredAlerts.length}
                     totalCount={alerts.length}
+                    itemsLabel="alerts"
+                    fieldPlaceholder="field (e.g. severity, events[0].details.sourceipaddress)"
+                    suggestions={[
+                        'severity', 'status', 'alert_name', 'category', 'tags', 'summary',
+                        'assigneeName', 'resolution', 'impact', 'events[0].details.',
+                    ]}
                 />
 
                 <TriageQueue

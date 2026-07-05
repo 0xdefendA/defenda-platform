@@ -1,30 +1,33 @@
 import { ListFilter, Plus, Trash2 } from 'lucide-react';
 import type { CriteriaRow, CriteriaOperator } from '../../lib/rules';
 
-interface AlertFilterBarProps {
+interface FilterBarProps {
     rows: CriteriaRow[];
     onRowsChange: (rows: CriteriaRow[]) => void;
     matchedCount: number;
     totalCount: number;
+    /** datalist suggestions for the field input */
+    suggestions: string[];
+    /** noun for the "N of M" readout, e.g. "alerts" */
+    itemsLabel: string;
+    fieldPlaceholder?: string;
 }
 
 const OPERATORS: CriteriaOperator[] = ['=', '!=', 'contains', '>', '<', '>=', '<='];
 
-const FIELD_SUGGESTIONS = [
-    'severity', 'status', 'alert_name', 'category', 'tags', 'summary',
-    'assigneeName', 'resolution', 'impact', 'events[0].details.',
-];
-
 /**
- * Client-side filter conditions applied to the streamed alert list
- * (AND-joined, on top of the sidebar status/severity filters and search).
+ * Client-side filter conditions (AND-joined) applied to a streamed record
+ * list — shared by the alerts triage queue and the incidents list.
  */
-export const AlertFilterBar = ({ rows, onRowsChange, matchedCount, totalCount }: AlertFilterBarProps) => {
+export const FilterBar = ({
+    rows, onRowsChange, matchedCount, totalCount, suggestions, itemsLabel, fieldPlaceholder,
+}: FilterBarProps) => {
     const updateRow = (index: number, patch: Partial<CriteriaRow>) => {
         onRowsChange(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
     };
 
     const hasActive = rows.some(r => r.field.trim() && r.value.trim() !== '');
+    const datalistId = `filter-field-suggestions-${itemsLabel}`;
 
     return (
         <div className="border-b border-thin border-border-color bg-surface px-4 py-2 flex flex-col gap-1.5">
@@ -43,7 +46,7 @@ export const AlertFilterBar = ({ rows, onRowsChange, matchedCount, totalCount }:
                 )}
                 {hasActive && (
                     <span className="ml-auto font-mono text-[11px] text-muted">
-                        {matchedCount} of {totalCount} alerts
+                        {matchedCount} of {totalCount} {itemsLabel}
                     </span>
                 )}
             </div>
@@ -56,10 +59,10 @@ export const AlertFilterBar = ({ rows, onRowsChange, matchedCount, totalCount }:
                         <span className="w-8" />
                     )}
                     <input
-                        list="alert-filter-field-suggestions"
+                        list={datalistId}
                         value={row.field}
                         onChange={(e) => updateRow(i, { field: e.target.value })}
-                        placeholder="field (e.g. severity, events[0].details.sourceipaddress)"
+                        placeholder={fieldPlaceholder ?? 'field'}
                         className="flex-1 text-xs font-mono bg-background border border-border-color rounded px-2 py-1 text-text-main placeholder:text-muted/60"
                     />
                     <select
@@ -94,8 +97,8 @@ export const AlertFilterBar = ({ rows, onRowsChange, matchedCount, totalCount }:
                 </button>
             )}
 
-            <datalist id="alert-filter-field-suggestions">
-                {FIELD_SUGGESTIONS.map(f => <option key={f} value={f} />)}
+            <datalist id={datalistId}>
+                {suggestions.map(f => <option key={f} value={f} />)}
             </datalist>
         </div>
     );

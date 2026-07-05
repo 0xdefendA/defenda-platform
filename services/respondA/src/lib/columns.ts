@@ -59,6 +59,15 @@ export const ALERT_DEFAULT_COLUMNS: EventColumn[] = [
     columnForPath(['assigneeName'], 'assignee'),
 ];
 
+/** Defaults for the incidents list. 'tasks' is a derived column (done/total). */
+export const INCIDENT_DEFAULT_COLUMNS: EventColumn[] = [
+    columnForPath(['id'], 'incident id'),
+    columnForPath(['title']),
+    columnForPath(['createdAt'], 'created'),
+    columnForPath(['alertIds'], 'alerts'),
+    { id: 'tasks', label: 'tasks', path: ['done'] },
+];
+
 export const getValueAtPath = (obj: unknown, path: JsonPath): unknown => {
     let val: unknown = obj;
     for (const seg of path) {
@@ -109,6 +118,7 @@ export const compareValues = (a: unknown, b: unknown): number => {
 
 export const EVENTS_COLUMNS_KEY = 'responda.events.columns';
 export const TRIAGE_COLUMNS_KEY = 'responda.triage.columns';
+export const INCIDENTS_COLUMNS_KEY = 'responda.incidents.columns';
 
 export const loadColumns = (storageKey: string, defaults: EventColumn[]): EventColumn[] => {
     try {

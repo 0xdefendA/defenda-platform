@@ -1,18 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
+import { ColumnPicker } from '../components/ui/ColumnPicker';
+import { FilterBar } from '../components/ui/FilterBar';
 import { format } from 'date-fns';
-import { ShieldAlert, ChevronRight } from 'lucide-react';
+import { ArrowDown, ArrowUp, ShieldAlert, ChevronRight, X } from 'lucide-react';
 import type { Incident } from '../types';
+import type { CriteriaRow, JsonPath } from '../lib/rules';
+import {
+    INCIDENTS_COLUMNS_KEY, INCIDENT_DEFAULT_COLUMNS, columnForPath, compareValues,
+    formatCellValue, getValueAtPath, loadColumns, saveColumns, type EventColumn,
+} from '../lib/columns';
+import { matchesAllRows } from '../lib/filter';
+
+// Width hints for well-known columns; anything else shares remaining space.
+const COLUMN_WIDTHS: Record<string, string> = {
+    id: '100px',
+    title: 'minmax(300px, 1fr)',
+    createdAt: '150px',
+    alertIds: '120px',
+    tasks: '120px',
+};
+
+type SortDir = 'asc' | 'desc';
 
 export const IncidentsPage = () => {
     const navigate = useNavigate();
     const [incidents, setIncidents] = useState<Incident[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterRows, setFilterRows] = useState<CriteriaRow[]>([]);
+    const [sort, setSort] = useState<{ id: string; dir: SortDir }>({ id: 'createdAt', dir: 'desc' });
+    const [columns, setColumns] = useState<EventColumn[]>(
+        () => loadColumns(INCIDENTS_COLUMNS_KEY, INCIDENT_DEFAULT_COLUMNS)
+    );
 
     useEffect(() => {
         const q = query(
@@ -31,6 +55,29 @@ export const IncidentsPage = () => {
 
         return () => unsubscribe();
     }, []);
+
+    const updateColumns = (next: EventColumn[]) => {
+        setColumns(next);
+        saveColumns(INCIDENTS_COLUMNS_KEY, next);
+    };
+
+    const handleAddColumn = (path: JsonPath, label?: string) => {
+        const col = columnForPath(path, label);
+        if (columns.some(c => c.id === col.id)) return;
+        updateColumns([...columns, col]);
+    };
+
+    const handleRemoveColumn = (id: string) => {
+        updateColumns(columns.filter(c => c.id !== id));
+    };
+
+    const handleSort = (id: string) => {
+        setSort(prev =>
+            prev.id === id
+                ? { id, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                : { id, dir: id === 'createdAt' ? 'desc' : 'asc' }
+        );
+    };
 
     const handleCreateIncident = async () => {
         const incidentId = `incident-${Math.random().toString(36).substr(2, 9)}`;
@@ -55,12 +102,39 @@ export const IncidentsPage = () => {
         }
     };
 
-    const filteredIncidents = incidents.filter(i => {
+    // Derived columns sort by their meaningful number, not the raw value.
+    const sortValue = (incident: Incident, col: EventColumn): unknown => {
+        if (col.id === 'alertIds') return incident.alertIds?.length ?? 0;
+        if (col.id === 'tasks') return incident.done?.length ?? 0;
+        return getValueAtPath(incident, col.path);
+    };
+
+    const filteredIncidents = useMemo(() => {
         const search = searchTerm.toLowerCase();
-        return !searchTerm ||
-            i.title.toLowerCase().includes(search) ||
-            i.id.toLowerCase().includes(search);
-    });
+        const matched = incidents.filter(i => {
+            const matchesSearch = !searchTerm ||
+                i.title.toLowerCase().includes(search) ||
+                i.id.toLowerCase().includes(search);
+            return matchesSearch && matchesAllRows(i, filterRows);
+        });
+
+        const col = columns.find(c => c.id === sort.id);
+        if (!col) return matched;
+        return [...matched].sort((a, b) => {
+            const va = sortValue(a, col);
+            const vb = sortValue(b, col);
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1;
+            if (vb == null) return -1;
+            const base = compareValues(va, vb);
+            return sort.dir === 'asc' ? base : -base;
+        });
+    }, [incidents, searchTerm, filterRows, columns, sort]);
+
+    const gridTemplate = [
+        ...columns.map(c => COLUMN_WIDTHS[c.id] ?? 'minmax(110px, 1fr)'),
+        '100px',
+    ].join(' ');
 
     return (
         <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-main overflow-hidden">
@@ -69,16 +143,55 @@ export const IncidentsPage = () => {
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                 <Header searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
+                <FilterBar
+                    rows={filterRows}
+                    onRowsChange={setFilterRows}
+                    matchedCount={filteredIncidents.length}
+                    totalCount={incidents.length}
+                    itemsLabel="incidents"
+                    fieldPlaceholder="field (e.g. title, playbookRef, theories[0].description)"
+                    suggestions={['title', 'id', 'playbookRef', 'slackLink', 'theories[0].description', 'todo[0].description']}
+                />
+
                 <div className="flex-1 overflow-auto bg-surface relative">
                     {/* Table Header */}
-                    <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20">
-                        <div className="grid grid-cols-[100px_minmax(300px,_1fr)_150px_120px_120px_100px] items-center px-6 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10">
-                            <div>Incident ID</div>
-                            <div>Title</div>
-                            <div>Created</div>
-                            <div className="text-center">Alerts</div>
-                            <div className="text-center">Tasks</div>
-                            <div className="text-right">Actions</div>
+                    <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20 min-w-[900px]">
+                        <div
+                            className="grid items-center px-6 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10"
+                            style={{ gridTemplateColumns: gridTemplate }}
+                        >
+                            {columns.map(col => (
+                                <div
+                                    key={col.id}
+                                    className="group flex items-center gap-1 cursor-pointer select-none hover:text-text-main transition-colors"
+                                    title={`Sort by ${col.id}`}
+                                    onClick={() => handleSort(col.id)}
+                                >
+                                    <span className="truncate">{col.label}</span>
+                                    {sort.id === col.id && (
+                                        sort.dir === 'asc'
+                                            ? <ArrowUp className="w-3 h-3 text-primary shrink-0" />
+                                            : <ArrowDown className="w-3 h-3 text-primary shrink-0" />
+                                    )}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveColumn(col.id); }}
+                                        title={`Remove column ${col.label}`}
+                                        className="opacity-0 group-hover:opacity-100 text-muted hover:text-accent transition-opacity shrink-0"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                            <div className="flex items-center justify-end gap-1">
+                                <span>Actions</span>
+                                <ColumnPicker
+                                    columns={columns}
+                                    defaults={INCIDENT_DEFAULT_COLUMNS}
+                                    onAddColumn={handleAddColumn}
+                                    placeholder="playbookRef"
+                                    tip="Any incident field works, including paths like theories[0].description."
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -92,32 +205,12 @@ export const IncidentsPage = () => {
                             <div
                                 key={incident.id}
                                 onClick={() => navigate(`/incident/${incident.id}`)}
-                                className="grid grid-cols-[100px_minmax(300px,_1fr)_150px_120px_120px_100px] items-center px-6 py-4 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer"
+                                className="grid items-center px-6 py-4 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer min-w-[900px]"
+                                style={{ gridTemplateColumns: gridTemplate }}
                             >
-                                <div className="font-mono text-xs text-text-main truncate pr-4">
-                                    {incident.id
-                                        .replace(/^incident-/, '')
-                                        .replace(/-incident$/, '')
-                                        .substring(0, 8)
-                                        .toUpperCase()}
-                                </div>
-                                <div className="font-medium text-sm text-text-main flex items-center gap-2">
-                                    <ShieldAlert className="w-4 h-4 text-primary" />
-                                    {incident.title}
-                                </div>
-                                <div className="text-xs text-muted font-mono">
-                                    {format(incident.createdAt, 'yyyy-MM-dd HH:mm')}
-                                </div>
-                                <div className="text-center">
-                                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-primary/10 text-primary font-mono text-[10px] font-bold">
-                                        {incident.alertIds?.length || 0}
-                                    </span>
-                                </div>
-                                <div className="text-center">
-                                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-success/10 text-success font-mono text-[10px] font-bold">
-                                        {incident.done?.length || 0}/{(incident.todo?.length || 0) + (incident.done?.length || 0)}
-                                    </span>
-                                </div>
+                                {columns.map(col => (
+                                    <IncidentCell key={col.id} incident={incident} col={col} />
+                                ))}
                                 <div className="text-right">
                                     <ChevronRight className="w-5 h-5 text-muted opacity-0 group-hover:opacity-100 transition-all ml-auto" />
                                 </div>
@@ -137,4 +230,58 @@ export const IncidentsPage = () => {
             </main>
         </div>
     );
+};
+
+const IncidentCell = ({ incident, col }: { incident: Incident; col: EventColumn }) => {
+    const value = getValueAtPath(incident, col.path);
+
+    switch (col.id) {
+        case 'id':
+            return (
+                <div className="font-mono text-xs text-text-main truncate pr-4">
+                    {incident.id
+                        .replace(/^incident-/, '')
+                        .replace(/-incident$/, '')
+                        .substring(0, 8)
+                        .toUpperCase()}
+                </div>
+            );
+        case 'title':
+            return (
+                <div className="font-medium text-sm text-text-main flex items-center gap-2 truncate pr-4" title={incident.title}>
+                    <ShieldAlert className="w-4 h-4 text-primary shrink-0" />
+                    <span className="truncate">{incident.title}</span>
+                </div>
+            );
+        case 'createdAt':
+            return (
+                <div className="text-xs text-muted font-mono">
+                    {typeof value === 'number' ? format(value, 'yyyy-MM-dd HH:mm') : '—'}
+                </div>
+            );
+        case 'alertIds':
+            return (
+                <div className="text-center">
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-primary/10 text-primary font-mono text-[10px] font-bold">
+                        {incident.alertIds?.length || 0}
+                    </span>
+                </div>
+            );
+        case 'tasks':
+            return (
+                <div className="text-center">
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-success/10 text-success font-mono text-[10px] font-bold">
+                        {incident.done?.length || 0}/{(incident.todo?.length || 0) + (incident.done?.length || 0)}
+                    </span>
+                </div>
+            );
+        default: {
+            const text = formatCellValue(value);
+            return (
+                <div className="text-xs text-muted font-mono truncate pr-2" title={text === '—' ? col.id : text}>
+                    {text}
+                </div>
+            );
+        }
+    }
 };
