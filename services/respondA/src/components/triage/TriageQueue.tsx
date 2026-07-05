@@ -7,6 +7,8 @@ import {
 } from '../../lib/columns';
 import { ColumnPicker } from '../ui/ColumnPicker';
 import { AlertRow } from './AlertRow';
+import { useColumnDrag } from '../../hooks/useColumnDrag';
+import { useColumnResize } from '../../hooks/useColumnResize';
 
 interface TriageQueueProps {
     alerts: Alert[];
@@ -17,6 +19,7 @@ interface TriageQueueProps {
     onUnclaim: (alertId: string) => void;
     onAddColumn: (path: JsonPath, label?: string) => void;
     onRemoveColumn: (id: string) => void;
+    onColumnsChange: (next: EventColumn[]) => void; // reorder + resize
     currentUserId?: string;
     loading: boolean;
 }
@@ -34,15 +37,20 @@ const COLUMN_WIDTHS: Record<string, string> = {
 };
 
 export const gridTemplateFor = (columns: EventColumn[]): string =>
-    [...columns.map(c => COLUMN_WIDTHS[c.id] ?? 'minmax(110px, 1fr)'), '150px'].join(' ');
+    [
+        ...columns.map(c => (c.width ? `${c.width}px` : COLUMN_WIDTHS[c.id] ?? 'minmax(110px, 1fr)')),
+        '150px',
+    ].join(' ');
 
 type SortDir = 'asc' | 'desc';
 
 export const TriageQueue = ({
     alerts, presences, columns, onAlertClick, onClaim, onUnclaim,
-    onAddColumn, onRemoveColumn, currentUserId, loading,
+    onAddColumn, onRemoveColumn, onColumnsChange, currentUserId, loading,
 }: TriageQueueProps) => {
     const [sort, setSort] = useState<{ id: string; dir: SortDir }>({ id: 'created_at', dir: 'desc' });
+    const { handlers: dragHandlers, headerClass: dragClass } = useColumnDrag(columns, onColumnsChange);
+    const { resizeHandleProps } = useColumnResize(columns, onColumnsChange);
 
     const handleSort = (id: string) => {
         setSort(prev =>
@@ -87,8 +95,9 @@ export const TriageQueue = ({
                     {columns.map((col, i) => (
                         <div
                             key={col.id}
-                            className={`group flex items-center gap-1 cursor-pointer select-none hover:text-text-main transition-colors ${i === 0 ? 'pl-2' : ''}`}
-                            title={`Sort by ${col.id}`}
+                            {...dragHandlers(i)}
+                            className={`group relative flex items-center gap-1 cursor-pointer select-none hover:text-text-main transition-colors ${i === 0 ? 'pl-2' : ''} ${dragClass(i)}`}
+                            title={`Sort by ${col.id} — drag to reorder`}
                             onClick={() => handleSort(col.id)}
                         >
                             <span className="truncate">{col.label}</span>
@@ -104,6 +113,7 @@ export const TriageQueue = ({
                             >
                                 <X className="w-3 h-3" />
                             </button>
+                            <span {...resizeHandleProps(i)} />
                         </div>
                     ))}
                     <div className="flex items-center justify-end gap-1 pr-2">

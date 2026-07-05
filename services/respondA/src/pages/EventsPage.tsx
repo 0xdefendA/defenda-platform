@@ -156,6 +156,7 @@ export const EventsPage = () => {
                             onAddCondition={handleAddCondition}
                             onAddColumn={handleAddColumn}
                             onRemoveColumn={handleRemoveColumn}
+                            onColumnsChange={updateColumns}
                         />
                     </div>
                 </div>

@@ -7,6 +7,7 @@ export interface EventColumn {
     id: string;     // canonical path string, e.g. 'details.sourceipaddress'
     label: string;  // short header label, e.g. 'sourceipaddress'
     path: JsonPath; // exact segments into the record object
+    width?: number; // user-resized width in px; absent = automatic
 }
 
 export const pathToString = (path: JsonPath): string =>

@@ -240,6 +240,7 @@ export const TriagePage = () => {
                     onUnclaim={handleUnclaim}
                     onAddColumn={handleAddColumn}
                     onRemoveColumn={handleRemoveColumn}
+                    onColumnsChange={updateColumns}
                     currentUserId={user?.uid}
                     loading={loading}
                 />

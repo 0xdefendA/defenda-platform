@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Copy, Database, X
 import { SeverityBadge } from '../ui/SeverityBadge';
 import { ColumnPicker } from '../ui/ColumnPicker';
 import { JsonTree } from './JsonTree';
+import { useColumnDrag } from '../../hooks/useColumnDrag';
+import { useColumnResize } from '../../hooks/useColumnResize';
 import type { EventRecord } from '../../lib/queryApi';
 import type { CriteriaRow, JsonPath } from '../../lib/rules';
 import {
@@ -18,16 +20,28 @@ interface EventsTableProps {
     onAddCondition: (row: CriteriaRow) => void;
     onAddColumn: (path: JsonPath) => void;
     onRemoveColumn: (id: string) => void;
+    onColumnsChange: (next: EventColumn[]) => void; // reorder + resize
 }
+
+// Sizing hints for known columns when the user hasn't resized them.
+// Columns without a hint (like summary) flex into the remaining space.
+const WIDTH_HINTS: Record<string, number | undefined> = {
+    severity: 90,
+    source: 150,
+    category: 150,
+    summary: undefined,
+};
 
 type SortDir = 'asc' | 'desc';
 interface SortState { id: string; dir: SortDir } // id 'time' = utctimestamp
 
 export const EventsTable = ({
-    events, loading, hasRun, columns, onAddCondition, onAddColumn, onRemoveColumn,
+    events, loading, hasRun, columns, onAddCondition, onAddColumn, onRemoveColumn, onColumnsChange,
 }: EventsTableProps) => {
     const [expanded, setExpanded] = useState<Set<number>>(new Set());
     const [sort, setSort] = useState<SortState>({ id: 'time', dir: 'desc' });
+    const { handlers: dragHandlers, headerClass: dragClass } = useColumnDrag(columns, onColumnsChange);
+    const { resizeHandleProps } = useColumnResize(columns, onColumnsChange);
 
     const toggle = (i: number) => {
         setExpanded(prev => {
@@ -92,12 +106,12 @@ export const EventsTable = ({
 
     return (
         <div className="flex-1 overflow-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse table-fixed">
                 <thead className="sticky top-0 bg-surface z-10">
                     <tr className="border-b border-thin border-border-color">
                         <th className="w-8" />
                         <th
-                            className={`${thClass} cursor-pointer select-none hover:text-text-main transition-colors`}
+                            className={`${thClass} w-[170px] cursor-pointer select-none hover:text-text-main transition-colors`}
                             onClick={() => handleSort('time')}
                             title="Sort by time"
                         >
@@ -106,24 +120,27 @@ export const EventsTable = ({
                                 <SortArrow id="time" />
                             </span>
                         </th>
-                        {columns.map(col => (
+                        {columns.map((col, i) => (
                             <th
                                 key={col.id}
-                                className={`${thClass} group whitespace-nowrap cursor-pointer select-none hover:text-text-main transition-colors`}
-                                title={`Sort by ${col.id}`}
+                                {...dragHandlers(i)}
+                                style={{ width: col.width ?? (col.id in WIDTH_HINTS ? WIDTH_HINTS[col.id] : 170) }}
+                                className={`${thClass} group relative whitespace-nowrap cursor-pointer select-none hover:text-text-main transition-colors ${dragClass(i)}`}
+                                title={`Sort by ${col.id} — drag to reorder`}
                                 onClick={() => handleSort(col.id)}
                             >
-                                <span className="inline-flex items-center gap-1">
-                                    {col.label}
+                                <span className="inline-flex items-center gap-1 max-w-full">
+                                    <span className="truncate">{col.label}</span>
                                     <SortArrow id={col.id} />
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onRemoveColumn(col.id); }}
                                         title={`Remove column ${col.label}`}
-                                        className="opacity-0 group-hover:opacity-100 text-muted hover:text-accent transition-opacity"
+                                        className="opacity-0 group-hover:opacity-100 text-muted hover:text-accent transition-opacity shrink-0"
                                     >
                                         <X className="w-3 h-3" />
                                     </button>
                                 </span>
+                                <span {...resizeHandleProps(i)} />
                             </th>
                         ))}
                         <th className="px-2 py-2 w-10">

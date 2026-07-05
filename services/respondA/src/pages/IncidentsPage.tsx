@@ -15,6 +15,8 @@ import {
     formatCellValue, getValueAtPath, loadColumns, saveColumns, type EventColumn,
 } from '../lib/columns';
 import { matchesAllRows } from '../lib/filter';
+import { useColumnDrag } from '../hooks/useColumnDrag';
+import { useColumnResize } from '../hooks/useColumnResize';
 
 // Width hints for well-known columns; anything else shares remaining space.
 const COLUMN_WIDTHS: Record<string, string> = {
@@ -60,6 +62,9 @@ export const IncidentsPage = () => {
         setColumns(next);
         saveColumns(INCIDENTS_COLUMNS_KEY, next);
     };
+
+    const { handlers: dragHandlers, headerClass: dragClass } = useColumnDrag(columns, updateColumns);
+    const { resizeHandleProps } = useColumnResize(columns, updateColumns);
 
     const handleAddColumn = (path: JsonPath, label?: string) => {
         const col = columnForPath(path, label);
@@ -132,7 +137,7 @@ export const IncidentsPage = () => {
     }, [incidents, searchTerm, filterRows, columns, sort]);
 
     const gridTemplate = [
-        ...columns.map(c => COLUMN_WIDTHS[c.id] ?? 'minmax(110px, 1fr)'),
+        ...columns.map(c => (c.width ? `${c.width}px` : COLUMN_WIDTHS[c.id] ?? 'minmax(110px, 1fr)')),
         '100px',
     ].join(' ');
 
@@ -160,11 +165,12 @@ export const IncidentsPage = () => {
                             className="grid items-center px-6 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10"
                             style={{ gridTemplateColumns: gridTemplate }}
                         >
-                            {columns.map(col => (
+                            {columns.map((col, i) => (
                                 <div
                                     key={col.id}
-                                    className="group flex items-center gap-1 cursor-pointer select-none hover:text-text-main transition-colors"
-                                    title={`Sort by ${col.id}`}
+                                    {...dragHandlers(i)}
+                                    className={`group relative flex items-center gap-1 cursor-pointer select-none hover:text-text-main transition-colors ${dragClass(i)}`}
+                                    title={`Sort by ${col.id} — drag to reorder`}
                                     onClick={() => handleSort(col.id)}
                                 >
                                     <span className="truncate">{col.label}</span>
@@ -180,6 +186,7 @@ export const IncidentsPage = () => {
                                     >
                                         <X className="w-3 h-3" />
                                     </button>
+                                    <span {...resizeHandleProps(i)} />
                                 </div>
                             ))}
                             <div className="flex items-center justify-end gap-1">
