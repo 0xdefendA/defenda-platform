@@ -1,17 +1,71 @@
+import { useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import type { Alert, Presence } from '../../types';
+import type { JsonPath } from '../../lib/rules';
+import {
+    ALERT_DEFAULT_COLUMNS, compareValues, getValueAtPath, type EventColumn,
+} from '../../lib/columns';
+import { ColumnPicker } from '../ui/ColumnPicker';
 import { AlertRow } from './AlertRow';
 
 interface TriageQueueProps {
     alerts: Alert[];
     presences: Presence[];
+    columns: EventColumn[];
     onAlertClick: (alert: Alert) => void;
     onClaim: (alertId: string) => void;
     onUnclaim: (alertId: string) => void;
+    onAddColumn: (path: JsonPath, label?: string) => void;
+    onRemoveColumn: (id: string) => void;
     currentUserId?: string;
     loading: boolean;
 }
 
-export const TriageQueue = ({ alerts, presences, onAlertClick, onClaim, onUnclaim, currentUserId, loading }: TriageQueueProps) => {
+// Width hints for well-known columns; anything else shares remaining space.
+const COLUMN_WIDTHS: Record<string, string> = {
+    severity: '70px',
+    id: '90px',
+    created_at: '150px',
+    alert_name: 'minmax(200px, 1.5fr)',
+    summary: 'minmax(120px, 1fr)',
+    resolution: '110px',
+    impact: '100px',
+    assigneeName: '110px',
+};
+
+export const gridTemplateFor = (columns: EventColumn[]): string =>
+    [...columns.map(c => COLUMN_WIDTHS[c.id] ?? 'minmax(110px, 1fr)'), '150px'].join(' ');
+
+type SortDir = 'asc' | 'desc';
+
+export const TriageQueue = ({
+    alerts, presences, columns, onAlertClick, onClaim, onUnclaim,
+    onAddColumn, onRemoveColumn, currentUserId, loading,
+}: TriageQueueProps) => {
+    const [sort, setSort] = useState<{ id: string; dir: SortDir }>({ id: 'created_at', dir: 'desc' });
+
+    const handleSort = (id: string) => {
+        setSort(prev =>
+            prev.id === id
+                ? { id, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                : { id, dir: id === 'created_at' ? 'desc' : 'asc' }
+        );
+    };
+
+    const sortedAlerts = useMemo(() => {
+        const col = columns.find(c => c.id === sort.id);
+        if (!col) return alerts;
+        return [...alerts].sort((a, b) => {
+            const va = getValueAtPath(a, col.path);
+            const vb = getValueAtPath(b, col.path);
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1; // missing values always sort last
+            if (vb == null) return -1;
+            const base = compareValues(va, vb);
+            return sort.dir === 'asc' ? base : -base;
+        });
+    }, [alerts, columns, sort]);
+
     if (loading) {
         return (
             <div className="flex-1 flex items-center justify-center">
@@ -20,28 +74,59 @@ export const TriageQueue = ({ alerts, presences, onAlertClick, onClaim, onUnclai
         );
     }
 
+    const gridTemplate = gridTemplateFor(columns);
+
     return (
         <div className="flex-1 overflow-auto bg-surface relative">
             {/* Table Header */}
             <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20 min-w-[1000px]">
-                <div className="grid grid-cols-[70px_90px_minmax(200px,_1.5fr)_minmax(120px,_1fr)_110px_100px_100px_150px] items-center px-4 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10">
-                    <div className="pl-2">Severity</div>
-                    <div>Alert ID</div>
-                    <div>Title</div>
-                    <div className="hidden md:block">Entity</div>
-                    <div className="hidden md:block">Resolution</div>
-                    <div className="hidden md:block">Impact</div>
-                    <div className="hidden md:block text-right pr-4">Assignee</div>
-                    <div className="text-right pr-2">Actions</div>
+                <div
+                    className="grid items-center px-4 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10"
+                    style={{ gridTemplateColumns: gridTemplate }}
+                >
+                    {columns.map((col, i) => (
+                        <div
+                            key={col.id}
+                            className={`group flex items-center gap-1 cursor-pointer select-none hover:text-text-main transition-colors ${i === 0 ? 'pl-2' : ''}`}
+                            title={`Sort by ${col.id}`}
+                            onClick={() => handleSort(col.id)}
+                        >
+                            <span className="truncate">{col.label}</span>
+                            {sort.id === col.id && (
+                                sort.dir === 'asc'
+                                    ? <ArrowUp className="w-3 h-3 text-primary shrink-0" />
+                                    : <ArrowDown className="w-3 h-3 text-primary shrink-0" />
+                            )}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onRemoveColumn(col.id); }}
+                                title={`Remove column ${col.label}`}
+                                className="opacity-0 group-hover:opacity-100 text-muted hover:text-accent transition-opacity shrink-0"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                    ))}
+                    <div className="flex items-center justify-end gap-1 pr-2">
+                        <span>Actions</span>
+                        <ColumnPicker
+                            columns={columns}
+                            defaults={ALERT_DEFAULT_COLUMNS}
+                            onAddColumn={onAddColumn}
+                            placeholder="events[0].details.sourceipaddress"
+                            tip="Any alert field works — including paths into the triggering events."
+                        />
+                    </div>
                 </div>
             </div>
 
             {/* Table Body */}
             <div className="flex flex-col">
-                {alerts.map((alert) => (
+                {sortedAlerts.map((alert) => (
                     <AlertRow
                         key={alert.id}
                         alert={alert}
+                        columns={columns}
+                        gridTemplate={gridTemplate}
                         presences={presences.filter(p => p.activeContextId === alert.id)}
                         onClick={onAlertClick}
                         onClaim={onClaim}
@@ -49,7 +134,7 @@ export const TriageQueue = ({ alerts, presences, onAlertClick, onClaim, onUnclai
                         currentUserId={currentUserId}
                     />
                 ))}
-                {alerts.length === 0 && (
+                {sortedAlerts.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 bg-surface">
                         <p className="font-display text-2xl font-semibold text-muted">Queue Clear. En Garde.</p>
                     </div>

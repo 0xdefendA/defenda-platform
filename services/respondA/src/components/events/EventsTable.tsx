@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Copy, Database, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Copy, Database, X } from 'lucide-react';
 import { SeverityBadge } from '../ui/SeverityBadge';
+import { ColumnPicker } from '../ui/ColumnPicker';
 import { JsonTree } from './JsonTree';
 import type { EventRecord } from '../../lib/queryApi';
 import type { CriteriaRow, JsonPath } from '../../lib/rules';
 import {
-    DEFAULT_COLUMNS, formatCellValue, getValueAtPath,
-    parseFieldPath, type EventColumn,
+    EVENT_DEFAULT_COLUMNS, compareValues, formatCellValue, getValueAtPath,
+    type EventColumn,
 } from '../../lib/columns';
 
 interface EventsTableProps {
@@ -57,10 +58,7 @@ export const EventsTable = ({
             if (va == null && vb == null) return 0;
             if (va == null) return 1;  // missing values always sort last
             if (vb == null) return -1;
-            const base =
-                typeof va === 'number' && typeof vb === 'number'
-                    ? va - vb
-                    : String(va).localeCompare(String(vb));
+            const base = compareValues(va, vb);
             return sort.dir === 'asc' ? base : -base;
         });
     }, [events, columns, sort]);
@@ -129,7 +127,12 @@ export const EventsTable = ({
                             </th>
                         ))}
                         <th className="px-2 py-2 w-10">
-                            <AddColumnMenu columns={columns} onAddColumn={onAddColumn} />
+                            <ColumnPicker
+                                columns={columns}
+                                defaults={EVENT_DEFAULT_COLUMNS}
+                                onAddColumn={onAddColumn}
+                                tip="Tip: use the column icon on any field in an expanded event."
+                            />
                         </th>
                     </tr>
                 </thead>
@@ -147,75 +150,6 @@ export const EventsTable = ({
                     ))}
                 </tbody>
             </table>
-        </div>
-    );
-};
-
-const AddColumnMenu = ({ columns, onAddColumn }: {
-    columns: EventColumn[];
-    onAddColumn: (path: JsonPath) => void;
-}) => {
-    const [open, setOpen] = useState(false);
-    const [customPath, setCustomPath] = useState('');
-
-    const missingDefaults = DEFAULT_COLUMNS.filter(d => !columns.some(c => c.id === d.id));
-
-    const addCustom = () => {
-        const path = parseFieldPath(customPath);
-        if (!path) return;
-        onAddColumn(path);
-        setCustomPath('');
-        setOpen(false);
-    };
-
-    return (
-        <div className="relative">
-            <button
-                onClick={() => setOpen(o => !o)}
-                title="Add column"
-                className="p-1 rounded text-muted hover:text-primary hover:bg-primary/10 transition-colors"
-            >
-                <Plus className="w-4 h-4" />
-            </button>
-            {open && (
-                <>
-                    <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-30 w-64 bg-surface border border-border-color rounded-lg shadow-xl p-2 flex flex-col gap-1 normal-case tracking-normal">
-                        {missingDefaults.length > 0 && (
-                            <>
-                                <span className="text-[10px] font-display font-bold text-muted uppercase tracking-widest px-1">Defaults</span>
-                                {missingDefaults.map(d => (
-                                    <button
-                                        key={d.id}
-                                        onClick={() => { onAddColumn(d.path); setOpen(false); }}
-                                        className="text-left text-xs font-mono text-text-main px-2 py-1 rounded hover:bg-row-hover"
-                                    >
-                                        {d.label}
-                                    </button>
-                                ))}
-                            </>
-                        )}
-                        <span className="text-[10px] font-display font-bold text-muted uppercase tracking-widest px-1 mt-1">Field path</span>
-                        <div className="flex gap-1">
-                            <input
-                                value={customPath}
-                                onChange={(e) => setCustomPath(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && addCustom()}
-                                placeholder="details.sourceipaddress"
-                                className="flex-1 min-w-0 text-xs font-mono bg-background border border-border-color rounded px-2 py-1 text-text-main placeholder:text-muted/60"
-                            />
-                            <button
-                                onClick={addCustom}
-                                disabled={!parseFieldPath(customPath)}
-                                className="text-xs font-bold text-white bg-primary rounded px-2 py-1 disabled:opacity-40"
-                            >
-                                Add
-                            </button>
-                        </div>
-                        <span className="text-[10px] text-muted px-1">Tip: use the column icon on any field in an expanded event.</span>
-                    </div>
-                </>
-            )}
         </div>
     );
 };

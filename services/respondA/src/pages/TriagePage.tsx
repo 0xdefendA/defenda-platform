@@ -8,8 +8,15 @@ import { usePresence } from '../hooks/usePresence';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
 import { TriageQueue } from '../components/triage/TriageQueue';
+import { AlertFilterBar } from '../components/triage/AlertFilterBar';
 import { ActionCanvas } from '../components/canvas/ActionCanvas';
 import type { Alert, AlertResolution, AlertImpact } from '../types';
+import type { CriteriaRow, JsonPath } from '../lib/rules';
+import {
+    ALERT_DEFAULT_COLUMNS, TRIAGE_COLUMNS_KEY, columnForPath, loadColumns, saveColumns,
+    type EventColumn,
+} from '../lib/columns';
+import { matchesAllRows } from '../lib/filter';
 
 export const TriagePage = () => {
     const navigate = useNavigate();
@@ -20,7 +27,26 @@ export const TriagePage = () => {
     const [severityFilter, setSeverityFilter] = useState<string[]>([]);
     const [queueFilter, setQueueFilter] = useState<'all' | 'my'>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterRows, setFilterRows] = useState<CriteriaRow[]>([]);
+    const [columns, setColumns] = useState<EventColumn[]>(
+        () => loadColumns(TRIAGE_COLUMNS_KEY, ALERT_DEFAULT_COLUMNS)
+    );
     const { alerts, loading } = useAlerts(statusFilter);
+
+    const updateColumns = (next: EventColumn[]) => {
+        setColumns(next);
+        saveColumns(TRIAGE_COLUMNS_KEY, next);
+    };
+
+    const handleAddColumn = (path: JsonPath, label?: string) => {
+        const col = columnForPath(path, label);
+        if (columns.some(c => c.id === col.id)) return;
+        updateColumns([...columns, col]);
+    };
+
+    const handleRemoveColumn = (id: string) => {
+        updateColumns(columns.filter(c => c.id !== id));
+    };
 
     // Sync searchTerm with URL search param
     useEffect(() => {
@@ -45,7 +71,7 @@ export const TriagePage = () => {
             a.summary.toLowerCase().includes(search) ||
             JSON.stringify(a).toLowerCase().includes(search);
 
-        return matchesSeverity && matchesQueue && matchesSearch;
+        return matchesSeverity && matchesQueue && matchesSearch && matchesAllRows(a, filterRows);
     });
 
     const counts = {
@@ -192,12 +218,22 @@ export const TriagePage = () => {
                     onSearchChange={setSearchTerm}
                 />
 
+                <AlertFilterBar
+                    rows={filterRows}
+                    onRowsChange={setFilterRows}
+                    matchedCount={filteredAlerts.length}
+                    totalCount={alerts.length}
+                />
+
                 <TriageQueue
                     alerts={filteredAlerts}
                     presences={presences}
+                    columns={columns}
                     onAlertClick={handleAlertClick}
                     onClaim={handleClaim}
                     onUnclaim={handleUnclaim}
+                    onAddColumn={handleAddColumn}
+                    onRemoveColumn={handleRemoveColumn}
                     currentUserId={user?.uid}
                     loading={loading}
                 />

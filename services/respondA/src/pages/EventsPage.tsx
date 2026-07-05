@@ -7,7 +7,10 @@ import { RuleEditorModal } from '../components/events/RuleEditorModal';
 import { Toast, useToast } from '../components/ui/Toast';
 import { queryEvents, type EventRecord } from '../lib/queryApi';
 import { compileCriteria, compileRow, type CriteriaRow, type JsonPath } from '../lib/rules';
-import { columnForPath, loadColumns, saveColumns, type EventColumn } from '../lib/columns';
+import {
+    EVENTS_COLUMNS_KEY, EVENT_DEFAULT_COLUMNS, columnForPath, loadColumns, saveColumns,
+    type EventColumn,
+} from '../lib/columns';
 
 export const EventsPage = () => {
     const [mode, setMode] = useState<QueryMode>('builder');
@@ -23,11 +26,13 @@ export const EventsPage = () => {
     const [lastStats, setLastStats] = useState<{ count: number; elapsed_ms: number } | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const { toast, showToast, clearToast } = useToast();
-    const [columns, setColumns] = useState<EventColumn[]>(loadColumns);
+    const [columns, setColumns] = useState<EventColumn[]>(
+        () => loadColumns(EVENTS_COLUMNS_KEY, EVENT_DEFAULT_COLUMNS)
+    );
 
     const updateColumns = (next: EventColumn[]) => {
         setColumns(next);
-        saveColumns(next);
+        saveColumns(EVENTS_COLUMNS_KEY, next);
     };
 
     const handleAddColumn = (path: JsonPath) => {

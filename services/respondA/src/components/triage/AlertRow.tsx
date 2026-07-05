@@ -1,8 +1,11 @@
 import type { Alert, Presence } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
+import { formatCellValue, getValueAtPath, type EventColumn } from '../../lib/columns';
 
 interface AlertRowProps {
     alert: Alert;
+    columns: EventColumn[];
+    gridTemplate: string;
     presences: Presence[];
     onClick: (alert: Alert) => void;
     onClaim: (alertId: string) => void;
@@ -10,7 +13,9 @@ interface AlertRowProps {
     currentUserId?: string;
 }
 
-export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, currentUserId }: AlertRowProps) => {
+export const AlertRow = ({
+    alert, columns, gridTemplate, presences, onClick, onClaim, onUnclaim, currentUserId,
+}: AlertRowProps) => {
     const isUnassigned = !alert.assigneeId;
     const isAssignedToMe = alert.assigneeId === currentUserId;
     const activeAnalyst = presences.length > 0 ? presences[0] : null;
@@ -22,7 +27,8 @@ export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, curren
                 if ((e.target as HTMLElement).closest('button')) return;
                 onClick(alert);
             }}
-            className="grid grid-cols-[70px_90px_minmax(200px,_1.5fr)_minmax(120px,_1fr)_110px_100px_100px_150px] items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative min-w-[1000px]"
+            className="grid items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative min-w-[1000px]"
+            style={{ gridTemplateColumns: gridTemplate }}
         >
             {/* Presence Indicator line */}
             {activeAnalyst && (
@@ -32,42 +38,9 @@ export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, curren
                 />
             )}
 
-            <div className="pl-2">
-                <SeverityBadge severity={alert.severity.toLowerCase() as any} />
-            </div>
-
-            <div className="font-mono text-xs text-text-main truncate pr-2">
-                {alert.id.substring(0, 8).toUpperCase()}
-            </div>
-
-            <div className="font-medium text-sm text-text-main pr-4 truncate" title={alert.alert_name}>
-                {alert.alert_name}
-            </div>
-
-            <div className="hidden md:block text-xs text-muted font-mono truncate">
-                {alert.summary || 'No entity'}
-            </div>
-
-            <div className="hidden md:block text-[10px] font-mono uppercase text-muted truncate">
-                {alert.resolution?.replace('_', ' ') || '-'}
-            </div>
-
-            <div className="hidden md:block text-[10px] font-mono uppercase text-muted truncate">
-                {alert.impact || '-'}
-            </div>
-
-            <div className="hidden md:flex justify-end pr-4">
-                {isUnassigned ? (
-                    <span className="text-[10px] text-muted font-mono italic">Unassigned</span>
-                ) : (
-                    <div
-                        className="w-6 h-6 rounded-full border border-surface overflow-hidden bg-muted flex items-center justify-center text-[10px] font-mono font-bold text-white shrink-0"
-                        title={alert.assigneeName || alert.assigneeId || 'Assigned'}
-                    >
-                        {alert.assigneeName?.substring(0, 2).toUpperCase() || '??'}
-                    </div>
-                )}
-            </div>
+            {columns.map((col, i) => (
+                <AlertCell key={col.id} alert={alert} col={col} first={i === 0} />
+            ))}
 
             <div className="text-right pr-2 flex justify-end gap-2 shrink-0">
                 {isUnassigned ? (
@@ -94,4 +67,63 @@ export const AlertRow = ({ alert, presences, onClick, onClaim, onUnclaim, curren
             </div>
         </div>
     );
+};
+
+const AlertCell = ({ alert, col, first }: { alert: Alert; col: EventColumn; first: boolean }) => {
+    const pad = first ? 'pl-2' : '';
+    const value = getValueAtPath(alert, col.path);
+
+    switch (col.id) {
+        case 'severity':
+            return (
+                <div className={pad}>
+                    <SeverityBadge severity={String(value ?? 'info').toLowerCase()} />
+                </div>
+            );
+        case 'id':
+            return (
+                <div className={`${pad} font-mono text-xs text-text-main truncate pr-2`}>
+                    {String(value ?? '').substring(0, 8).toUpperCase()}
+                </div>
+            );
+        case 'alert_name':
+            return (
+                <div className={`${pad} font-medium text-sm text-text-main pr-4 truncate`} title={String(value ?? '')}>
+                    {formatCellValue(value)}
+                </div>
+            );
+        case 'resolution':
+        case 'impact':
+            return (
+                <div className={`${pad} text-[10px] font-mono uppercase text-muted truncate`}>
+                    {value ? String(value).replace('_', ' ') : '-'}
+                </div>
+            );
+        case 'assigneeName':
+            return (
+                <div className={`${pad} flex`}>
+                    {!alert.assigneeId ? (
+                        <span className="text-[10px] text-muted font-mono italic">Unassigned</span>
+                    ) : (
+                        <div
+                            className="w-6 h-6 rounded-full border border-surface overflow-hidden bg-muted flex items-center justify-center text-[10px] font-mono font-bold text-white shrink-0"
+                            title={alert.assigneeName || alert.assigneeId || 'Assigned'}
+                        >
+                            {alert.assigneeName?.substring(0, 2).toUpperCase() || '??'}
+                        </div>
+                    )}
+                </div>
+            );
+        default: {
+            const text = formatCellValue(value);
+            return (
+                <div
+                    className={`${pad} text-xs text-muted font-mono truncate pr-2`}
+                    title={text === '—' ? col.id : text}
+                >
+                    {text}
+                </div>
+            );
+        }
+    }
 };
