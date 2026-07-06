@@ -244,6 +244,11 @@ resource "google_cloud_run_v2_service" "ingestA_service" {
         name  = "PROJECT_ID"
         value = var.project_id
       }
+      # OIDC caller verification: only Pub/Sub push as this SA is accepted
+      env {
+        name  = "PUSH_SA_EMAIL"
+        value = module.gcp_project_setup.ingesta_sa_email
+      }
     }
   }
 
@@ -265,6 +270,11 @@ resource "google_cloud_run_v2_service" "alertA_service" {
       env {
         name  = "PROJECT_ID"
         value = var.project_id
+      }
+      # OIDC caller verification: only Scheduler/Pub/Sub as this SA is accepted
+      env {
+        name  = "PUSH_SA_EMAIL"
+        value = module.gcp_project_setup.alerta_sa_email
       }
     }
   }

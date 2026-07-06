@@ -131,18 +131,15 @@ export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilt
                     <div className="flex flex-col gap-2">
                         <h4 className="text-xs font-medium text-text-main">Status</h4>
                         <div className="flex gap-2">
-                            <button
-                                onClick={() => onStatusFilterChange?.('OPEN')}
-                                className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'OPEN' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
-                            >
-                                Open
-                            </button>
-                            <button
-                                onClick={() => onStatusFilterChange?.('RESOLVED')}
-                                className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === 'RESOLVED' ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
-                            >
-                                Resolved
-                            </button>
+                            {([['OPEN', 'Open'], ['ESCALATED', 'Escalated'], ['RESOLVED', 'Resolved']] as const).map(([value, label]) => (
+                                <button
+                                    key={value}
+                                    onClick={() => onStatusFilterChange?.(value)}
+                                    className={`flex-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border transition-colors ${statusFilter === value ? 'bg-primary border-primary text-white' : 'border-border-color text-muted hover:border-primary hover:text-primary'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
                         </div>
                     </div>
 

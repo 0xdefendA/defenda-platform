@@ -8,6 +8,7 @@ from google.cloud import bigquery
 
 from normalization_plugins import run_normalization_plugins
 from enrichment_plugins import run_enrichment_plugins
+from oidc import verify_push_token
 from utils.dotdict import DotDict
 
 app = FastAPI()
@@ -22,6 +23,7 @@ TABLE_REF = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
 
 @app.post("/")
 async def index(request: Request):
+    verify_push_token(request)
     envelope = await request.json()
 
     # Check if the message is a Pub/Sub message

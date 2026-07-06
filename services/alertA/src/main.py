@@ -18,6 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 from shared.models.alert import Alert, InflightSequenceAlert, AlertStatus
 
 import evaluator
+from oidc import verify_push_token
 
 app = FastAPI()
 
@@ -74,11 +75,12 @@ def load_rules():
 
 
 @app.post("/cron")
-async def handle_cron():
+async def handle_cron(request: Request):
     """
     Triggered by Cloud Scheduler every minute.
     Fans out evaluation to Pub/Sub.
     """
+    verify_push_token(request)
     rules = load_rules()
     published_count = 0
 
@@ -241,6 +243,7 @@ async def handle_evaluate(request: Request):
     Triggered by Pub/Sub push.
     Evaluates a specific rule or inflight alert.
     """
+    verify_push_token(request)
     envelope = await request.json()
     if not envelope:
         raise HTTPException(
