@@ -127,6 +127,21 @@ def determine_threshold_trigger(
             yield alert
 
 
+def determine_slot_trigger(
+    slot: dict, events: List[dict]
+) -> Generator[dict, None, None]:
+    """
+    Dispatches a sequence slot to its evaluator by alert_type. Threshold and
+    deadman slots can be combined freely within one sequence (e.g. root login
+    followed by deadman lack-of-vault-access).
+    """
+    slot_type = slot.get("alert_type", "threshold")
+    if slot_type == "deadman":
+        yield from determine_deadman_trigger(slot, events)
+    else:
+        yield from determine_threshold_trigger(slot, events)
+
+
 def determine_deadman_trigger(
     rule: dict, events: List[dict]
 ) -> Generator[dict, None, None]:

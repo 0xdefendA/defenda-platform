@@ -98,11 +98,15 @@ export const compileCriteria = (rows: CriteriaRow[]): string =>
 export type RuleAlertType = 'threshold' | 'deadman' | 'sequence';
 
 export interface SequenceSlotDraft {
+    /** threshold: fires on count >= threshold; deadman: fires on count <= threshold */
+    alert_type: 'threshold' | 'deadman';
     criteria: string;
     aggregation_key: string;
     threshold: number;
     event_snippet: string;
     event_sample_count: number;
+    /** BQ window for this slot (deadman slots usually want longer than 5) */
+    lookback_minutes?: number;
 }
 
 export interface ThresholdRuleDraft {
@@ -127,6 +131,7 @@ export interface ThresholdRuleDraft {
 }
 
 export const emptySlot = (criteria = ''): SequenceSlotDraft => ({
+    alert_type: 'threshold',
     criteria,
     aggregation_key: '',
     threshold: 1,
@@ -185,12 +190,18 @@ export const generateRuleYaml = (draft: ThresholdRuleDraft): string => {
     if (alertType === 'sequence') {
         lines.push('slots:');
         (draft.slots ?? []).forEach((slot, i) => {
+            const slotType = slot.alert_type === 'deadman' ? 'deadman' : 'threshold';
             lines.push(`  - alert_name: ${yamlQuote(`${draft.alert_name || 'rule'}_slot_${i + 1}`)}`);
-            lines.push(`    alert_type: "threshold"`);
+            lines.push(`    alert_type: "${slotType}"`);
             lines.push(`    criteria: ${yamlQuote(slot.criteria)}`);
-            lines.push(`    threshold: ${Math.max(1, Math.floor(slot.threshold))}`);
+            const slotMin = slotType === 'deadman' ? 0 : 1;
+            lines.push(`    threshold: ${Math.max(slotMin, Math.floor(slot.threshold))}`);
             if (slot.aggregation_key.trim() && slot.aggregation_key !== 'none') {
                 lines.push(`    aggregation_key: ${yamlQuote(slot.aggregation_key)}`);
+            }
+            const slotLookback = Math.floor(slot.lookback_minutes ?? 5);
+            if (slotType === 'deadman' || slotLookback !== 5) {
+                lines.push(`    lookback_minutes: ${Math.max(1, slotLookback)}`);
             }
             if (slot.event_snippet.trim()) {
                 lines.push(`    event_snippet: ${yamlQuote(slot.event_snippet)}`);

@@ -204,3 +204,29 @@ def test_is_expired_garbage_never_expires():
     assert evaluator.is_expired(None) is False
     assert evaluator.is_expired("not-a-date") is False
     assert evaluator.is_expired({"weird": True}) is False
+
+
+def test_determine_slot_trigger_dispatches_deadman():
+    # A deadman slot with no matching events should trigger via the dispatcher
+    slot = {
+        "alert_name": "no_vault_access",
+        "alert_type": "deadman",
+        "summary": "no vault access seen",
+        "threshold": 0,
+        "aggregation_key": "",
+    }
+    triggers = list(evaluator.determine_slot_trigger(slot, []))
+    assert len(triggers) == 1
+    assert triggers[0]["triggered"] is True
+
+    # And a threshold slot (or one with no alert_type) uses threshold logic
+    slot = {
+        "alert_name": "a_login",
+        "summary": "{{metadata.count}} logins",
+        "threshold": 1,
+        "aggregation_key": "",
+    }
+    events = [{"eventid": "1", "summary": "login"}]
+    triggers = list(evaluator.determine_slot_trigger(slot, events))
+    assert len(triggers) == 1
+    assert triggers[0]["events"] == events

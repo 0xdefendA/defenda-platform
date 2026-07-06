@@ -299,45 +299,45 @@ async def handle_evaluate(request: Request):
             first_slot = slots[0]
             events = get_events(first_slot.get("criteria", ""), rule_lookback(first_slot))
 
-            if first_slot.get("alert_type") == "threshold":
-                for alert in evaluator.determine_threshold_trigger(first_slot, events):
-                    new_events = [
-                        e
-                        for e in alert.get("events", [])
-                        if not is_event_processed(e.get("eventid"))
-                    ]
-                    if new_events:
-                        alert["events"] = new_events
-                        # Create inflight alert. Deep copy: a shallow copy
-                        # shares the slots list with the rule dict, so slot
-                        # updates would leak into subsequent triggers.
-                        inflight = copy.deepcopy(rule)
-                        inflight["slots"][0] = alert
+            # Slot dispatch handles threshold and deadman slots alike
+            for alert in evaluator.determine_slot_trigger(first_slot, events):
+                new_events = [
+                    e
+                    for e in alert.get("events", [])
+                    if not is_event_processed(e.get("eventid"))
+                ]
+                if new_events:
+                    alert["events"] = new_events
+                    # Create inflight alert. Deep copy: a shallow copy
+                    # shares the slots list with the rule dict, so slot
+                    # updates would leak into subsequent triggers.
+                    inflight = copy.deepcopy(rule)
+                    inflight["slots"][0] = alert
 
-                        # Calculate expiration from the rule lifespan
-                        offset = 3 * 86400  # 3 days default
-                        lifespan = rule.get("lifespan", "3 days")
-                        if "day" in lifespan:
-                            try:
-                                offset = int(lifespan.split()[0]) * 86400
-                            except (ValueError, IndexError):
-                                pass
+                    # Calculate expiration from the rule lifespan
+                    offset = 3 * 86400  # 3 days default
+                    lifespan = rule.get("lifespan", "3 days")
+                    if "day" in lifespan:
+                        try:
+                            offset = int(lifespan.split()[0]) * 86400
+                        except (ValueError, IndexError):
+                            pass
 
-                        inflight["expiration"] = evaluator.datetime.utcnow() + timedelta(
-                            seconds=offset
-                        )
+                    inflight["expiration"] = evaluator.datetime.utcnow() + timedelta(
+                        seconds=offset
+                    )
 
-                        inflight_obj = InflightSequenceAlert(**inflight)
-                        inflight_dict = inflight_obj.model_dump()
+                    inflight_obj = InflightSequenceAlert(**inflight)
+                    inflight_dict = inflight_obj.model_dump()
 
-                        transaction = fs_client.transaction()
-                        process_inflight_update_tx(
-                            transaction,
-                            inflight_obj.inflight_id,
-                            inflight_dict,
-                            new_events,
-                            False,
-                        )
+                    transaction = fs_client.transaction()
+                    process_inflight_update_tx(
+                        transaction,
+                        inflight_obj.inflight_id,
+                        inflight_dict,
+                        new_events,
+                        False,
+                    )
 
     elif msg_type == "inflight":
         # Process an existing inflight alert
@@ -359,35 +359,35 @@ async def handle_evaluate(request: Request):
             criteria = chevron.render(target_slot.get("criteria", ""), rule)
             events = get_events(criteria, rule_lookback(target_slot))
 
-            if target_slot.get("alert_type") == "threshold":
-                for alert in evaluator.determine_threshold_trigger(target_slot, events):
-                    new_events = [
-                        e
-                        for e in alert.get("events", [])
-                        if not is_event_processed(e.get("eventid"))
-                    ]
-                    if new_events:
-                        alert["events"] = new_events
-                        rule["slots"][target_index] = alert
+            # Slot dispatch handles threshold and deadman slots alike
+            for alert in evaluator.determine_slot_trigger(target_slot, events):
+                new_events = [
+                    e
+                    for e in alert.get("events", [])
+                    if not is_event_processed(e.get("eventid"))
+                ]
+                if new_events:
+                    alert["events"] = new_events
+                    rule["slots"][target_index] = alert
 
-                        # Check if this was the last slot
-                        is_complete = target_index == len(slots) - 1
-                        if is_complete:
-                            # Render final summary
-                            rule["summary"] = chevron.render(
-                                rule.get("summary", ""), rule
-                            )
-
-                        transaction = fs_client.transaction()
-                        process_inflight_update_tx(
-                            transaction,
-                            rule.get("inflight_id"),
-                            rule,
-                            new_events,
-                            is_complete,
+                    # Check if this was the last slot
+                    is_complete = target_index == len(slots) - 1
+                    if is_complete:
+                        # Render final summary
+                        rule["summary"] = chevron.render(
+                            rule.get("summary", ""), rule
                         )
-                        # We break here to avoid processing multiple triggers for the same slot in one run
-                        break
+
+                    transaction = fs_client.transaction()
+                    process_inflight_update_tx(
+                        transaction,
+                        rule.get("inflight_id"),
+                        rule,
+                        new_events,
+                        is_complete,
+                    )
+                    # We break here to avoid processing multiple triggers for the same slot in one run
+                    break
 
     return {"status": "ok"}
 

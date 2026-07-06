@@ -49,8 +49,12 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
 
     const [draft, setDraft] = useState<ThresholdRuleDraft>(
         existing?.draft
-            // Drafts saved before the type selector existed default to threshold.
-            ? { ...existing.draft, alert_type: existing.draft.alert_type ?? 'threshold' }
+            // Drafts saved before the type selectors existed default to threshold.
+            ? {
+                ...existing.draft,
+                alert_type: existing.draft.alert_type ?? 'threshold',
+                slots: existing.draft.slots?.map(s => ({ ...s, alert_type: s.alert_type ?? 'threshold' })),
+            }
             : emptyDraft(criteria)
     );
     const [tagsInput, setTagsInput] = useState(existing?.draft?.tags?.join(', ') ?? '');
@@ -290,8 +294,31 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
                                     <label className={labelClass}>Slots (all must trigger, in order)</label>
                                     {slots.map((slot, i) => (
                                         <div key={i} className="border border-thin border-border-color rounded-lg p-3 flex flex-col gap-2 bg-background/50">
-                                            <div className="flex items-center">
+                                            <div className="flex items-center gap-2">
                                                 <span className="text-[10px] font-display font-bold text-primary uppercase tracking-widest">Slot {i + 1}</span>
+                                                <select
+                                                    value={slot.alert_type}
+                                                    onChange={(e) => updateSlot(i, { alert_type: e.target.value as 'threshold' | 'deadman' })}
+                                                    title="threshold fires on count ≥; deadman fires when matching events are MISSING (count ≤)"
+                                                    className="text-[10px] font-mono bg-background border border-border-color rounded px-1.5 py-0.5 text-text-main"
+                                                >
+                                                    <option value="threshold">threshold</option>
+                                                    <option value="deadman">deadman</option>
+                                                </select>
+                                                {slot.alert_type === 'deadman' && (
+                                                    <label className="flex items-center gap-1 text-[10px] text-muted">
+                                                        lookback
+                                                        <input
+                                                            type="number"
+                                                            min={1}
+                                                            value={slot.lookback_minutes ?? 5}
+                                                            onChange={(e) => updateSlot(i, { lookback_minutes: Number(e.target.value) })}
+                                                            title="Lookback window in minutes for this slot"
+                                                            className="w-16 text-[10px] font-mono bg-background border border-border-color rounded px-1.5 py-0.5 text-text-main"
+                                                        />
+                                                        min
+                                                    </label>
+                                                )}
                                                 <div className="ml-auto flex items-center gap-1">
                                                     <button onClick={() => moveSlot(i, -1)} disabled={i === 0} title="Move up" className="p-1 text-muted hover:text-text-main disabled:opacity-30">
                                                         <ArrowUp className="w-3.5 h-3.5" />
@@ -327,10 +354,12 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
                                                     className={`${inputClass} font-mono flex-1`}
                                                 />
                                                 <div className="flex items-center gap-1 w-32">
-                                                    <span className="text-[10px] text-muted uppercase font-bold">≥</span>
+                                                    <span className="text-[10px] text-muted uppercase font-bold">
+                                                        {slot.alert_type === 'deadman' ? '≤' : '≥'}
+                                                    </span>
                                                     <input
                                                         type="number"
-                                                        min={1}
+                                                        min={slot.alert_type === 'deadman' ? 0 : 1}
                                                         value={slot.threshold}
                                                         onChange={(e) => updateSlot(i, { threshold: Number(e.target.value) })}
                                                         title="Slot threshold"
