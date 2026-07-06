@@ -5,8 +5,11 @@ import { useAuth } from './useAuth';
 import { useProfile } from './useProfile';
 import type { Presence } from '../types';
 
-const STALE_MS = 45_000;     // gone after 45s without a heartbeat (crash, closed tab)
-const HEARTBEAT_MS = 15_000; // refresh lastActive every 15s while mounted
+// Chrome throttles timers in background tabs to ~1/minute ("intensive
+// throttling"), so the stale window must comfortably exceed a throttled
+// heartbeat interval or presence flaps when analysts switch tabs.
+const STALE_MS = 150_000;    // gone after 2.5min without a heartbeat (crash, closed tab)
+const HEARTBEAT_MS = 15_000; // refresh lastActive every 15s while mounted (foreground)
 const TICK_MS = 10_000;      // re-evaluate staleness locally even without snapshots
 
 /**
@@ -76,12 +79,22 @@ export const usePresence = (contextId: string | null) => {
         write();
         const heartbeat = setInterval(write, HEARTBEAT_MS);
 
+        // Returning to a backgrounded tab: write immediately rather than
+        // waiting out a (possibly throttled) interval.
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') write();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        window.addEventListener('focus', onVisible);
+
         // Best-effort cleanup when the tab closes; staleness covers the rest.
         const onPageHide = () => { deleteDoc(presenceRef).catch(() => { }); };
         window.addEventListener('pagehide', onPageHide);
 
         return () => {
             clearInterval(heartbeat);
+            document.removeEventListener('visibilitychange', onVisible);
+            window.removeEventListener('focus', onVisible);
             window.removeEventListener('pagehide', onPageHide);
             // On context change the next effect run rewrites immediately, so
             // this delete never leaves a lasting gap.
