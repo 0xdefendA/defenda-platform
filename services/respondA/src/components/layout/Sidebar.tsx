@@ -3,7 +3,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useProfile, initialsFor } from '../../hooks/useProfile';
 import { ProfileModal } from './ProfileModal';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, LayoutGrid, LogOut, Radar, ShieldAlert, UserRoundPen, Zap } from 'lucide-react';
+import { Plus, LayoutGrid, LogOut, Radar, Settings, ShieldAlert, UserRoundPen, Zap } from 'lucide-react';
 
 interface SidebarProps {
     severityFilter?: string[];
@@ -83,6 +83,13 @@ export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilt
                 >
                     <Radar className="w-4 h-4" />
                     Detections
+                </Link>
+                <Link
+                    to="/settings"
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors border-l-2 ${location.pathname === '/settings' ? 'bg-row-hover text-text-main border-primary' : 'text-muted border-transparent hover:bg-row-hover'}`}
+                >
+                    <Settings className="w-4 h-4" />
+                    Settings
                 </Link>
             </div>
 

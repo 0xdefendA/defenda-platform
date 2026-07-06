@@ -230,3 +230,36 @@ def test_determine_slot_trigger_dispatches_deadman():
     triggers = list(evaluator.determine_slot_trigger(slot, events))
     assert len(triggers) == 1
     assert triggers[0]["events"] == events
+
+
+def test_severity_allows():
+    assert evaluator.severity_allows("CRITICAL", "HIGH") is True
+    assert evaluator.severity_allows("HIGH", "HIGH") is True
+    assert evaluator.severity_allows("MEDIUM", "HIGH") is False
+    assert evaluator.severity_allows("critical", "info") is True
+    assert evaluator.severity_allows("INFO", "INFO") is True
+    # unknown severities rank lowest; unknown minimum defaults to HIGH
+    assert evaluator.severity_allows("BANANAS", "INFO") is True
+    assert evaluator.severity_allows("MEDIUM", "BANANAS") is False
+
+
+def test_render_slack_template():
+    template = {
+        "blocks": [
+            {"type": "header", "text": {"type": "plain_text", "text": "{{severity}}: {{alert_name}}"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": "{{summary}}"}},
+        ],
+        "count": 3,
+    }
+    alert = {
+        "severity": "HIGH",
+        "alert_name": "aws_console_login",
+        "summary": 'user "jeff" logged in',
+    }
+    rendered = evaluator.render_slack_template(template, alert)
+    assert rendered["blocks"][0]["text"]["text"] == "HIGH: aws_console_login"
+    # quotes survive because rendering happens per-field, not via JSON text
+    assert rendered["blocks"][1]["text"]["text"] == 'user "jeff" logged in'
+    assert rendered["count"] == 3  # non-strings untouched
+    # template is not mutated
+    assert template["blocks"][0]["text"]["text"] == "{{severity}}: {{alert_name}}"

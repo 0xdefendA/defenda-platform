@@ -1,10 +1,12 @@
 import os
 import copy
 import glob
+import uuid
 import yaml
 import json
 import base64
 import logging
+import requests
 from datetime import timedelta
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
@@ -192,6 +194,60 @@ def process_inflight_update_tx(
     return True
 
 
+# Fallback when settings/notifications has no template
+DEFAULT_SLACK_TEMPLATE = {
+    "blocks": [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "{{severity}}: {{alert_name}}"},
+        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": "{{summary}}"}},
+        {
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": "category: {{category}} · alert {{alert_id}}"}
+            ],
+        },
+    ]
+}
+
+
+def notify_slack(alert_data: dict):
+    """
+    Posts a newly created alert to Slack, driven by the Firestore
+    settings/notifications doc (enabled, webhook_url, min_severity,
+    template). Best-effort only: failures are logged, never raised, so
+    notification problems can't break alert creation.
+    """
+    try:
+        doc = fs_client.collection("settings").document("notifications").get()
+        if not doc.exists:
+            return
+        cfg = doc.to_dict() or {}
+        if not cfg.get("enabled") or not cfg.get("webhook_url"):
+            return
+        if not evaluator.severity_allows(
+            alert_data.get("severity", "INFO"), cfg.get("min_severity", "HIGH")
+        ):
+            return
+
+        template = DEFAULT_SLACK_TEMPLATE
+        if cfg.get("template"):
+            try:
+                template = json.loads(cfg["template"])
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Bad Slack template in settings, using default: {e}")
+
+        payload = evaluator.render_slack_template(template, alert_data)
+        resp = requests.post(cfg["webhook_url"], json=payload, timeout=5)
+        if resp.status_code >= 300:
+            logger.warning(
+                f"Slack notify failed: {resp.status_code} {resp.text[:200]}"
+            )
+    except Exception as e:
+        logger.error(f"Slack notify error: {e}")
+
+
 def process_deadman_alert(alert_data: dict):
     """
     Deadman alerts fire on ABSENCE, so there are no event IDs to dedup on —
@@ -235,6 +291,8 @@ def process_deadman_alert(alert_data: dict):
         alert_data["last_triggered_at"] = now
         alert_obj = Alert(**alert_data)
         alerts_ref.document(alert_obj.alert_id).set(alert_obj.model_dump())
+        # Notify on the first hit only; subsequent hits fold into this alert
+        notify_slack({**alert_data, "alert_id": alert_obj.alert_id})
 
 
 @app.post("/evaluate")
@@ -282,8 +340,11 @@ async def handle_evaluate(request: Request):
                 ]
                 if new_events:
                     alert["events"] = new_events
+                    # Pre-generate the ID so the notification can reference it
+                    alert["alert_id"] = alert.get("alert_id") or str(uuid.uuid4())
                     transaction = fs_client.transaction()
-                    process_new_alert_tx(transaction, alert, new_events)
+                    if process_new_alert_tx(transaction, alert, new_events):
+                        notify_slack(alert)
 
         elif alert_type == "deadman":
             events = get_events(rule.get("criteria", ""), rule_lookback(rule))
@@ -378,14 +439,22 @@ async def handle_evaluate(request: Request):
                             rule.get("summary", ""), rule
                         )
 
+                    if is_complete:
+                        # Pre-generate the ID so the notification can reference it
+                        rule["alert_id"] = rule.get("alert_id") or str(uuid.uuid4())
+
                     transaction = fs_client.transaction()
-                    process_inflight_update_tx(
-                        transaction,
-                        rule.get("inflight_id"),
-                        rule,
-                        new_events,
-                        is_complete,
-                    )
+                    if (
+                        process_inflight_update_tx(
+                            transaction,
+                            rule.get("inflight_id"),
+                            rule,
+                            new_events,
+                            is_complete,
+                        )
+                        and is_complete
+                    ):
+                        notify_slack(rule)
                     # We break here to avoid processing multiple triggers for the same slot in one run
                     break
 

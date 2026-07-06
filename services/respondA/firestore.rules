@@ -52,5 +52,10 @@ service cloud.firestore {
     match /rules/{ruleId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Platform settings (e.g. Slack notification config, read by alertA)
+    match /settings/{settingId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

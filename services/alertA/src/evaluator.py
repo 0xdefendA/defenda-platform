@@ -1,4 +1,5 @@
 import chevron
+import re
 import time
 from typing import Any, Dict, Generator, List, Optional
 from collections import Counter
@@ -31,6 +32,36 @@ def generate_bigquery_sql(criteria: str, project_id: str, lookback_minutes: int 
     LIMIT 1000
     """
     return query
+
+
+SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
+
+
+def severity_allows(alert_severity: str, min_severity: str) -> bool:
+    """True when an alert's severity meets the notification threshold."""
+    rank = SEVERITY_RANK.get(str(alert_severity).upper(), 0)
+    min_rank = SEVERITY_RANK.get(str(min_severity).upper(), 3)  # default HIGH
+    return rank >= min_rank
+
+
+def render_slack_template(obj: Any, context: dict) -> Any:
+    """
+    Recursively chevron-renders every string in a parsed Slack Block Kit
+    structure against the alert dict. Rendering after JSON parsing (rather
+    than string substitution into JSON text) means quotes/newlines in alert
+    fields can't corrupt the payload.
+    """
+    if isinstance(obj, str):
+        # {{var}} HTML-escapes per the mustache spec (quotes become &quot;),
+        # which is wrong for Slack text. Promote plain variable tags to raw
+        # triple-mustache; sections ({{#..}}) and existing {{{..}}} untouched.
+        raw = re.sub(r"\{\{\s*([\w.]+)\s*\}\}", r"{{{\1}}}", obj)
+        return chevron.render(raw, context)
+    if isinstance(obj, list):
+        return [render_slack_template(item, context) for item in obj]
+    if isinstance(obj, dict):
+        return {k: render_slack_template(v, context) for k, v in obj.items()}
+    return obj
 
 
 def is_expired(expiration: Any, now_ts: Optional[float] = None) -> bool:

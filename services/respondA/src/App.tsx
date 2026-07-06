@@ -3,6 +3,7 @@ import { TriagePage } from './pages/TriagePage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { EventsPage } from './pages/EventsPage';
 import { DetectionsPage } from './pages/DetectionsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { IncidentWorkspace } from './components/incident/IncidentWorkspace';
 import { LoginPage } from './pages/LoginPage';
 import { AuthProvider } from './hooks/useAuth';
@@ -44,6 +45,14 @@ function App() {
               element={
                 <AuthGuard>
                   <DetectionsPage />
+                </AuthGuard>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <AuthGuard>
+                  <SettingsPage />
                 </AuthGuard>
               }
             />
