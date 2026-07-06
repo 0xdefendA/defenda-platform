@@ -2,22 +2,24 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, query, where, onSnapshot, setDoc, doc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from './useAuth';
+import { useProfile } from './useProfile';
 import type { Presence } from '../types';
 
 export const usePresence = (contextId: string | null) => {
     const { user } = useAuth();
+    const { profile } = useProfile();
     const [presences, setPresences] = useState<Presence[]>([]);
     const lastUpdateRef = useRef<number>(0);
     const THROTTLE_MS = 2000; // Throttle Firestore writes to 2 seconds
 
-    // Use actual user or a STABLE mock user
+    // Use actual user (with their chosen profile identity) or a STABLE mock user
     const currentUser = useMemo(() => {
         if (user) {
             return {
                 id: user.uid,
-                name: user.displayName || user.email?.split('@')[0] || 'Analyst',
-                avatarColor: '#0055FF',
-                photoURL: user.photoURL
+                name: profile?.displayName || user.displayName || user.email?.split('@')[0] || 'Analyst',
+                avatarColor: profile?.avatarColor || '#0055FF',
+                photoURL: profile?.photoURL || user.photoURL
             };
         }
 
@@ -32,7 +34,7 @@ export const usePresence = (contextId: string | null) => {
         };
         localStorage.setItem('respondA_mock_user', JSON.stringify(newUser));
         return newUser;
-    }, [user]);
+    }, [user, profile]);
 
     useEffect(() => {
         if (!contextId) return;

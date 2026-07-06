@@ -9,6 +9,7 @@ import { ColumnPicker } from '../ui/ColumnPicker';
 import { AlertRow } from './AlertRow';
 import { useColumnDrag } from '../../hooks/useColumnDrag';
 import { useColumnResize } from '../../hooks/useColumnResize';
+import { useProfiles } from '../../hooks/useProfiles';
 
 interface TriageQueueProps {
     alerts: Alert[];
@@ -51,6 +52,7 @@ export const TriageQueue = ({
     const [sort, setSort] = useState<{ id: string; dir: SortDir }>({ id: 'created_at', dir: 'desc' });
     const { handlers: dragHandlers, headerClass: dragClass } = useColumnDrag(columns, onColumnsChange);
     const { resizeHandleProps } = useColumnResize(columns, onColumnsChange);
+    const { profiles } = useProfiles();
 
     const handleSort = (id: string) => {
         setSort(prev =>
@@ -136,6 +138,7 @@ export const TriageQueue = ({
                         key={alert.id}
                         alert={alert}
                         columns={columns}
+                        profiles={profiles}
                         gridTemplate={gridTemplate}
                         presences={presences.filter(p => p.activeContextId === alert.id)}
                         onClick={onAlertClick}

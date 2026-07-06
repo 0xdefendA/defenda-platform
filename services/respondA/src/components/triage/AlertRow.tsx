@@ -1,10 +1,12 @@
 import type { Alert, Presence } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
 import { formatCellValue, getValueAtPath, type EventColumn } from '../../lib/columns';
+import { initialsFor, type UserProfile } from '../../hooks/useProfile';
 
 interface AlertRowProps {
     alert: Alert;
     columns: EventColumn[];
+    profiles: Map<string, UserProfile>;
     gridTemplate: string;
     presences: Presence[];
     onClick: (alert: Alert) => void;
@@ -14,7 +16,7 @@ interface AlertRowProps {
 }
 
 export const AlertRow = ({
-    alert, columns, gridTemplate, presences, onClick, onClaim, onUnclaim, currentUserId,
+    alert, columns, profiles, gridTemplate, presences, onClick, onClaim, onUnclaim, currentUserId,
 }: AlertRowProps) => {
     const isUnassigned = !alert.assigneeId;
     const isAssignedToMe = alert.assigneeId === currentUserId;
@@ -39,7 +41,7 @@ export const AlertRow = ({
             )}
 
             {columns.map((col, i) => (
-                <AlertCell key={col.id} alert={alert} col={col} first={i === 0} />
+                <AlertCell key={col.id} alert={alert} col={col} profiles={profiles} first={i === 0} />
             ))}
 
             <div className="text-right pr-2 flex justify-end gap-2 shrink-0">
@@ -69,7 +71,12 @@ export const AlertRow = ({
     );
 };
 
-const AlertCell = ({ alert, col, first }: { alert: Alert; col: EventColumn; first: boolean }) => {
+const AlertCell = ({ alert, col, profiles, first }: {
+    alert: Alert;
+    col: EventColumn;
+    profiles: Map<string, UserProfile>;
+    first: boolean;
+}) => {
     const pad = first ? 'pl-2' : '';
     const value = getValueAtPath(alert, col.path);
 
@@ -99,21 +106,29 @@ const AlertCell = ({ alert, col, first }: { alert: Alert; col: EventColumn; firs
                     {value ? String(value).replace('_', ' ') : '-'}
                 </div>
             );
-        case 'assigneeName':
+        case 'assigneeName': {
+            const assignee = alert.assigneeId ? profiles.get(alert.assigneeId) : undefined;
+            const name = assignee?.displayName || alert.assigneeName || alert.assigneeId || 'Assigned';
             return (
                 <div className={`${pad} flex`}>
                     {!alert.assigneeId ? (
                         <span className="text-[10px] text-muted font-mono italic">Unassigned</span>
                     ) : (
                         <div
-                            className="w-6 h-6 rounded-full border border-surface overflow-hidden bg-muted flex items-center justify-center text-[10px] font-mono font-bold text-white shrink-0"
-                            title={alert.assigneeName || alert.assigneeId || 'Assigned'}
+                            className="w-6 h-6 rounded-full border border-surface overflow-hidden flex items-center justify-center text-[10px] font-mono font-bold text-white shrink-0"
+                            style={{ backgroundColor: assignee?.photoURL ? undefined : assignee?.avatarColor || '#495057' }}
+                            title={assignee ? `${assignee.displayName} — ${assignee.title}` : name}
                         >
-                            {alert.assigneeName?.substring(0, 2).toUpperCase() || '??'}
+                            {assignee?.photoURL ? (
+                                <img alt={name} className="w-full h-full object-cover" src={assignee.photoURL} />
+                            ) : (
+                                initialsFor(name)
+                            )}
                         </div>
                     )}
                 </div>
             );
+        }
         default: {
             const text = formatCellValue(value);
             return (

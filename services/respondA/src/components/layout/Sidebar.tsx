@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useProfile, initialsFor } from '../../hooks/useProfile';
+import { ProfileModal } from './ProfileModal';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, LayoutGrid, Radar, ShieldAlert, Zap } from 'lucide-react';
+import { Plus, LayoutGrid, LogOut, Radar, ShieldAlert, UserRoundPen, Zap } from 'lucide-react';
 
 interface SidebarProps {
     severityFilter?: string[];
@@ -22,7 +25,10 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilter = 'all', onQueueFilterChange, statusFilter = 'OPEN', onStatusFilterChange, onCreateIncident, counts }: SidebarProps) => {
-    const { user } = useAuth();
+    const { user, signOut } = useAuth();
+    const { profile, saveProfile } = useProfile();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [editingProfile, setEditingProfile] = useState(false);
     const location = useLocation();
     const isAlertsPage = location.pathname === '/';
     const isIncidentsPage = location.pathname === '/incidents';
@@ -186,24 +192,62 @@ export const Sidebar = ({ severityFilter = [], onSeverityFilterChange, queueFilt
             )}
 
             {/* User Profile Area */}
-            <div className="mt-auto border-t border-thin border-border-color p-4">
-                <div className="flex items-center gap-3 cursor-pointer hover:bg-row-hover -mx-2 px-2 py-2 transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-surface border-2 border-primary flex items-center justify-center overflow-hidden shrink-0">
-                        {user?.photoURL ? (
-                            <img alt="User Avatar" className="w-full h-full object-cover" src={user.photoURL} />
+            <div className="mt-auto border-t border-thin border-border-color p-4 relative">
+                <div
+                    onClick={() => setMenuOpen(o => !o)}
+                    className="flex items-center gap-3 cursor-pointer hover:bg-row-hover -mx-2 px-2 py-2 transition-colors"
+                >
+                    <div
+                        className="w-8 h-8 rounded-full border-2 border-primary flex items-center justify-center overflow-hidden shrink-0 text-[10px] font-mono font-bold text-white"
+                        style={{ backgroundColor: profile?.photoURL ? undefined : profile?.avatarColor }}
+                    >
+                        {profile?.photoURL ? (
+                            <img alt="User Avatar" className="w-full h-full object-cover" src={profile.photoURL} />
                         ) : (
-                            <div className="w-full h-full bg-row-hover flex items-center justify-center text-[10px] font-mono font-bold text-text-main">
-                                {user?.email?.substring(0, 2).toUpperCase() || '??'}
-                            </div>
+                            initialsFor(profile?.displayName || user?.email || '??')
                         )}
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-sm font-medium leading-none mb-1">{user?.displayName || user?.email?.split('@')[0] || 'Analyst'}</span>
-                        <span className="text-xs text-muted font-mono leading-none">Tier 2 Analyst</span>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium leading-none mb-1 truncate">
+                            {profile?.displayName || user?.email?.split('@')[0] || 'Analyst'}
+                        </span>
+                        <span className="text-xs text-muted font-mono leading-none truncate">
+                            {profile?.title || 'Analyst'}
+                        </span>
                     </div>
                     <span className="material-symbols-outlined ml-auto text-muted text-[18px]">more_vert</span>
                 </div>
+
+                {menuOpen && (
+                    <>
+                        <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+                        <div className="absolute bottom-full left-4 right-4 mb-1 z-40 bg-surface border border-border-color rounded-lg shadow-xl p-1 flex flex-col">
+                            <button
+                                onClick={() => { setMenuOpen(false); setEditingProfile(true); }}
+                                className="flex items-center gap-2 text-left text-xs font-medium text-text-main px-3 py-2 rounded hover:bg-row-hover"
+                            >
+                                <UserRoundPen className="w-4 h-4 text-muted" />
+                                Edit profile
+                            </button>
+                            <button
+                                onClick={() => { setMenuOpen(false); signOut(); }}
+                                className="flex items-center gap-2 text-left text-xs font-medium text-text-main px-3 py-2 rounded hover:bg-row-hover"
+                            >
+                                <LogOut className="w-4 h-4 text-muted" />
+                                Sign out
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
+
+            {editingProfile && profile && (
+                <ProfileModal
+                    profile={profile}
+                    onSave={saveProfile}
+                    onClose={() => setEditingProfile(false)}
+                />
+            )}
         </aside>
     );
 };
