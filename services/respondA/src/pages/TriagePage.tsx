@@ -31,7 +31,7 @@ export const TriagePage = () => {
     const [columns, setColumns] = useState<EventColumn[]>(
         () => loadColumns(TRIAGE_COLUMNS_KEY, ALERT_DEFAULT_COLUMNS)
     );
-    const { alerts, loading } = useAlerts(statusFilter);
+    const { alerts, loading, hasMore, loadMore } = useAlerts(statusFilter);
 
     const updateColumns = (next: EventColumn[]) => {
         setColumns(next);
@@ -245,11 +245,13 @@ export const TriagePage = () => {
                     onColumnsChange={updateColumns}
                     currentUserId={user?.uid}
                     loading={loading}
+                    hasMore={hasMore}
+                    onLoadMore={loadMore}
                 />
             </main>
 
             <ActionCanvas
-                alert={selectedAlert}
+                alert={selectedAlert ? alerts.find(a => a.id === selectedAlert.id) ?? selectedAlert : null}
                 onClose={() => setSelectedAlert(null)}
                 onEscalate={handleEscalate}
                 onResolve={handleResolve}

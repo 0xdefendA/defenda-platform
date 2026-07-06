@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, setDoc, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
@@ -41,11 +41,15 @@ export const IncidentsPage = () => {
         () => loadColumns(INCIDENTS_COLUMNS_KEY, INCIDENT_DEFAULT_COLUMNS)
     );
     const { presences } = usePresence('incidents-list');
+    const PAGE_SIZE = 50;
+    const [maxIncidents, setMaxIncidents] = useState(PAGE_SIZE);
+    const [hasMore, setHasMore] = useState(false);
 
     useEffect(() => {
         const q = query(
             collection(db, 'incidents'),
-            orderBy('createdAt', 'desc')
+            orderBy('createdAt', 'desc'),
+            limit(maxIncidents)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -54,11 +58,12 @@ export const IncidentsPage = () => {
                 incidentData.push({ id: doc.id, ...doc.data() } as Incident);
             });
             setIncidents(incidentData);
+            setHasMore(snapshot.size >= maxIncidents);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [maxIncidents]);
 
     const updateColumns = (next: EventColumn[]) => {
         setColumns(next);
@@ -234,6 +239,16 @@ export const IncidentsPage = () => {
                             </div>
                         ))}
 
+                        {!loading && hasMore && filteredIncidents.length > 0 && (
+                            <div className="flex items-center justify-center py-3">
+                                <button
+                                    onClick={() => setMaxIncidents(n => n + PAGE_SIZE)}
+                                    className="font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-4 py-1.5 hover:bg-primary hover:text-white transition-colors"
+                                >
+                                    Load more incidents
+                                </button>
+                            </div>
+                        )}
                         {!loading && filteredIncidents.length === 0 && (
                             <div className="flex flex-col items-center justify-center py-20 bg-surface">
                                 <p className="font-display text-2xl font-semibold text-muted text-center">

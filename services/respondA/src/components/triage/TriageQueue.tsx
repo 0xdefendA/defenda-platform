@@ -23,6 +23,8 @@ interface TriageQueueProps {
     onColumnsChange: (next: EventColumn[]) => void; // reorder + resize
     currentUserId?: string;
     loading: boolean;
+    hasMore?: boolean;
+    onLoadMore?: () => void;
 }
 
 // Width hints for well-known columns; anything else shares remaining space.
@@ -48,6 +50,7 @@ type SortDir = 'asc' | 'desc';
 export const TriageQueue = ({
     alerts, presences, columns, onAlertClick, onClaim, onUnclaim,
     onAddColumn, onRemoveColumn, onColumnsChange, currentUserId, loading,
+    hasMore, onLoadMore,
 }: TriageQueueProps) => {
     const [sort, setSort] = useState<{ id: string; dir: SortDir }>({ id: 'created_at', dir: 'desc' });
     const { handlers: dragHandlers, headerClass: dragClass } = useColumnDrag(columns, onColumnsChange);
@@ -154,6 +157,16 @@ export const TriageQueue = ({
                 {sortedAlerts.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 bg-surface">
                         <p className="font-display text-2xl font-semibold text-muted">Queue Clear. En Garde.</p>
+                    </div>
+                )}
+                {hasMore && sortedAlerts.length > 0 && (
+                    <div className="flex items-center justify-center py-3">
+                        <button
+                            onClick={onLoadMore}
+                            className="font-display text-[11px] font-bold uppercase tracking-wider text-primary border border-primary px-4 py-1.5 hover:bg-primary hover:text-white transition-colors"
+                        >
+                            Load more alerts
+                        </button>
                     </div>
                 )}
             </div>
