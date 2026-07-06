@@ -76,6 +76,7 @@ export const DetectionsPage = () => {
                                     <tr className="border-b border-thin border-border-color">
                                         <th className={thClass}>Enabled</th>
                                         <th className={thClass}>Name</th>
+                                        <th className={thClass}>Type</th>
                                         <th className={thClass}>Severity</th>
                                         <th className={thClass}>Threshold</th>
                                         <th className={thClass}>Created by</th>
@@ -85,7 +86,10 @@ export const DetectionsPage = () => {
                                 <tbody>
                                     {rules.map(rule => {
                                         const severity = rule.draft?.severity || yamlField(rule.yaml, 'severity') || 'INFO';
-                                        const threshold = rule.draft?.threshold ?? yamlField(rule.yaml, 'threshold') ?? '—';
+                                        const alertType = rule.draft?.alert_type || yamlField(rule.yaml, 'alert_type') || 'threshold';
+                                        const threshold = alertType === 'sequence'
+                                            ? `${rule.draft?.slots?.length ?? '?'} slots`
+                                            : rule.draft?.threshold ?? yamlField(rule.yaml, 'threshold') ?? '—';
                                         return (
                                             <tr key={rule.name} className="border-b border-thin border-border-color hover:bg-row-hover transition-colors">
                                                 <td className="px-3 py-2">
@@ -100,6 +104,7 @@ export const DetectionsPage = () => {
                                                 <td className={`px-3 py-2 font-mono text-xs ${rule.enabled ? 'text-text-main' : 'text-muted line-through'}`}>
                                                     {rule.name}
                                                 </td>
+                                                <td className="px-3 py-2 font-mono text-xs text-muted">{alertType}</td>
                                                 <td className="px-3 py-2">
                                                     <SeverityBadge severity={severity.toLowerCase()} />
                                                 </td>

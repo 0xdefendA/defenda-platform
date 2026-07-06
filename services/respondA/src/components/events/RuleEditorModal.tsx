@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { X, Download, ShieldPlus, Save, Loader2 } from 'lucide-react';
+import { X, Download, ShieldPlus, Save, Loader2, Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import {
-    generateRuleYaml, isValidRuleName,
-    type RuleDoc, type ThresholdRuleDraft,
+    emptySlot, generateRuleYaml, isValidRuleName,
+    type RuleAlertType, type RuleDoc, type SequenceSlotDraft, type ThresholdRuleDraft,
 } from '../../lib/rules';
 
 interface RuleEditorModalProps {
@@ -22,6 +22,7 @@ const SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'];
 
 const emptyDraft = (criteria: string): ThresholdRuleDraft => ({
     alert_name: '',
+    alert_type: 'threshold',
     severity: 'INFO',
     category: 'general',
     criteria,
@@ -31,7 +32,14 @@ const emptyDraft = (criteria: string): ThresholdRuleDraft => ({
     event_snippet: '',
     event_sample_count: 3,
     tags: [],
+    lookback_minutes: 5,
 });
+
+const TYPE_HELP: Record<RuleAlertType, string> = {
+    threshold: 'Threshold: fires when count ≥ threshold within the lookback window, grouped by the aggregation key.',
+    deadman: 'Deadman: fires when matching events are MISSING — count ≤ threshold within the lookback window (0 = expected events stopped arriving). Repeat triggers fold into the open alert as hits.',
+    sequence: 'Sequence: all slots must trigger in order within the lifespan. Later slots can reference earlier ones, e.g. {{slots.0.events.0.details.user_name}}.',
+};
 
 export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSaved }: RuleEditorModalProps) => {
     const { user } = useAuth();
@@ -40,7 +48,10 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
     const rawOnly = isEdit && !existing?.draft;
 
     const [draft, setDraft] = useState<ThresholdRuleDraft>(
-        existing?.draft ? { ...existing.draft } : emptyDraft(criteria)
+        existing?.draft
+            // Drafts saved before the type selector existed default to threshold.
+            ? { ...existing.draft, alert_type: existing.draft.alert_type ?? 'threshold' }
+            : emptyDraft(criteria)
     );
     const [tagsInput, setTagsInput] = useState(existing?.draft?.tags?.join(', ') ?? '');
     const [rawYaml, setRawYaml] = useState(existing?.yaml ?? '');
@@ -69,9 +80,38 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
 
     const ruleName = isEdit ? existing!.name : draft.alert_name;
     const nameValid = isValidRuleName(ruleName);
+    const isSequence = draft.alert_type === 'sequence';
+    const slots = draft.slots ?? [];
     const canSave = rawOnly
         ? rawYaml.trim().length > 0
-        : !!(nameValid && draft.criteria.trim() && draft.summary.trim());
+        : isSequence
+            ? !!(nameValid && draft.summary.trim() && slots.length >= 2 && slots.every(s => s.criteria.trim()))
+            : !!(nameValid && draft.criteria.trim() && draft.summary.trim());
+
+    const handleTypeChange = (t: RuleAlertType) => {
+        if (t === 'sequence' && slots.length === 0) {
+            // Seed slot 0 from the current criteria so nothing typed is lost.
+            set({
+                alert_type: t,
+                lifespan_days: draft.lifespan_days ?? 7,
+                slots: [emptySlot(draft.criteria), emptySlot()],
+            });
+        } else {
+            set({ alert_type: t });
+        }
+    };
+
+    const updateSlot = (index: number, patch: Partial<SequenceSlotDraft>) => {
+        set({ slots: slots.map((s, i) => (i === index ? { ...s, ...patch } : s)) });
+    };
+
+    const moveSlot = (index: number, delta: -1 | 1) => {
+        const target = index + delta;
+        if (target < 0 || target >= slots.length) return;
+        const next = [...slots];
+        [next[index], next[target]] = [next[target], next[index]];
+        set({ slots: next });
+    };
 
     const handleSave = async () => {
         if (!canSave) return;
@@ -177,6 +217,18 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
 
                             <div className="flex gap-3">
                                 <div className="flex-1">
+                                    <label className={labelClass}>Type</label>
+                                    <select
+                                        value={draft.alert_type}
+                                        onChange={(e) => handleTypeChange(e.target.value as RuleAlertType)}
+                                        className={`${inputClass} mt-1`}
+                                    >
+                                        <option value="threshold">threshold</option>
+                                        <option value="deadman">deadman</option>
+                                        <option value="sequence">sequence</option>
+                                    </select>
+                                </div>
+                                <div className="flex-1">
                                     <label className={labelClass}>Severity</label>
                                     <select
                                         value={draft.severity}
@@ -195,38 +247,130 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
                                         className={`${inputClass} mt-1`}
                                     />
                                 </div>
-                                <div className="w-24">
-                                    <label className={labelClass}>Threshold</label>
-                                    <input
-                                        type="number"
-                                        min={1}
-                                        value={draft.threshold}
-                                        onChange={(e) => set({ threshold: Number(e.target.value) })}
-                                        className={`${inputClass} mt-1`}
-                                    />
+                                {isSequence ? (
+                                    <div className="w-28">
+                                        <label className={labelClass}>Lifespan (days)</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={draft.lifespan_days ?? 7}
+                                            onChange={(e) => set({ lifespan_days: Number(e.target.value) })}
+                                            className={`${inputClass} mt-1`}
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="w-24">
+                                        <label className={labelClass}>Threshold</label>
+                                        <input
+                                            type="number"
+                                            min={draft.alert_type === 'deadman' ? 0 : 1}
+                                            value={draft.threshold}
+                                            onChange={(e) => set({ threshold: Number(e.target.value) })}
+                                            className={`${inputClass} mt-1`}
+                                        />
+                                    </div>
+                                )}
+                                {draft.alert_type === 'deadman' && (
+                                    <div className="w-28">
+                                        <label className={labelClass}>Lookback (min)</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={draft.lookback_minutes ?? 5}
+                                            onChange={(e) => set({ lookback_minutes: Number(e.target.value) })}
+                                            className={`${inputClass} mt-1`}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            <p className="text-[10px] text-muted -mt-1">{TYPE_HELP[draft.alert_type]}</p>
+
+                            {isSequence ? (
+                                <div className="flex flex-col gap-2">
+                                    <label className={labelClass}>Slots (all must trigger, in order)</label>
+                                    {slots.map((slot, i) => (
+                                        <div key={i} className="border border-thin border-border-color rounded-lg p-3 flex flex-col gap-2 bg-background/50">
+                                            <div className="flex items-center">
+                                                <span className="text-[10px] font-display font-bold text-primary uppercase tracking-widest">Slot {i + 1}</span>
+                                                <div className="ml-auto flex items-center gap-1">
+                                                    <button onClick={() => moveSlot(i, -1)} disabled={i === 0} title="Move up" className="p-1 text-muted hover:text-text-main disabled:opacity-30">
+                                                        <ArrowUp className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button onClick={() => moveSlot(i, 1)} disabled={i === slots.length - 1} title="Move down" className="p-1 text-muted hover:text-text-main disabled:opacity-30">
+                                                        <ArrowDown className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => set({ slots: slots.filter((_, idx) => idx !== i) })}
+                                                        disabled={slots.length <= 2}
+                                                        title={slots.length <= 2 ? 'Sequences need at least two slots' : 'Remove slot'}
+                                                        className="p-1 text-muted hover:text-accent disabled:opacity-30"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <textarea
+                                                value={slot.criteria}
+                                                onChange={(e) => updateSlot(i, { criteria: e.target.value })}
+                                                rows={2}
+                                                spellCheck={false}
+                                                placeholder={i === 0
+                                                    ? "source='onelogin' AND CAST(JSON_VALUE(details.risk_score) AS INT64) > 80"
+                                                    : "… AND JSON_VALUE(details.user_name) = '{{slots.0.events.0.details.user_name}}'"}
+                                                className={`${inputClass} font-mono resize-y`}
+                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={slot.aggregation_key}
+                                                    onChange={(e) => updateSlot(i, { aggregation_key: e.target.value })}
+                                                    placeholder="aggregation key (optional)"
+                                                    className={`${inputClass} font-mono flex-1`}
+                                                />
+                                                <div className="flex items-center gap-1 w-32">
+                                                    <span className="text-[10px] text-muted uppercase font-bold">≥</span>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        value={slot.threshold}
+                                                        onChange={(e) => updateSlot(i, { threshold: Number(e.target.value) })}
+                                                        title="Slot threshold"
+                                                        className={inputClass}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button
+                                        onClick={() => set({ slots: [...slots, emptySlot()] })}
+                                        className="self-start flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                                    >
+                                        <Plus className="w-3 h-3" /> Add slot
+                                    </button>
                                 </div>
-                            </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className={labelClass}>Criteria</label>
+                                        <textarea
+                                            value={draft.criteria}
+                                            onChange={(e) => set({ criteria: e.target.value })}
+                                            rows={3}
+                                            spellCheck={false}
+                                            className={`${inputClass} font-mono mt-1 resize-y`}
+                                        />
+                                    </div>
 
-                            <div>
-                                <label className={labelClass}>Criteria</label>
-                                <textarea
-                                    value={draft.criteria}
-                                    onChange={(e) => set({ criteria: e.target.value })}
-                                    rows={3}
-                                    spellCheck={false}
-                                    className={`${inputClass} font-mono mt-1 resize-y`}
-                                />
-                            </div>
-
-                            <div>
-                                <label className={labelClass}>Aggregation key</label>
-                                <input
-                                    value={draft.aggregation_key}
-                                    onChange={(e) => set({ aggregation_key: e.target.value })}
-                                    placeholder="details.useridentity.arn (optional — groups events before counting)"
-                                    className={`${inputClass} font-mono mt-1`}
-                                />
-                            </div>
+                                    <div>
+                                        <label className={labelClass}>Aggregation key</label>
+                                        <input
+                                            value={draft.aggregation_key}
+                                            onChange={(e) => set({ aggregation_key: e.target.value })}
+                                            placeholder="details.useridentity.arn (optional — groups events before counting)"
+                                            className={`${inputClass} font-mono mt-1`}
+                                        />
+                                    </div>
+                                </>
+                            )}
 
                             <div>
                                 <label className={labelClass}>Summary template</label>
@@ -240,27 +384,29 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
                                 </p>
                             </div>
 
-                            <div className="flex gap-3">
-                                <div className="flex-1">
-                                    <label className={labelClass}>Event snippet (optional)</label>
-                                    <input
-                                        value={draft.event_snippet}
-                                        onChange={(e) => set({ event_snippet: e.target.value })}
-                                        placeholder="{{details.sourceipaddress}} → {{details.eventname}}"
-                                        className={`${inputClass} font-mono mt-1`}
-                                    />
+                            {!isSequence && (
+                                <div className="flex gap-3">
+                                    <div className="flex-1">
+                                        <label className={labelClass}>Event snippet (optional)</label>
+                                        <input
+                                            value={draft.event_snippet}
+                                            onChange={(e) => set({ event_snippet: e.target.value })}
+                                            placeholder="{{details.sourceipaddress}} → {{details.eventname}}"
+                                            className={`${inputClass} font-mono mt-1`}
+                                        />
+                                    </div>
+                                    <div className="w-24">
+                                        <label className={labelClass}>Samples</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            value={draft.event_sample_count}
+                                            onChange={(e) => set({ event_sample_count: Number(e.target.value) })}
+                                            className={`${inputClass} mt-1`}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="w-24">
-                                    <label className={labelClass}>Samples</label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        value={draft.event_sample_count}
-                                        onChange={(e) => set({ event_sample_count: Number(e.target.value) })}
-                                        className={`${inputClass} mt-1`}
-                                    />
-                                </div>
-                            </div>
+                            )}
 
                             <div>
                                 <label className={labelClass}>Tags (comma-separated)</label>

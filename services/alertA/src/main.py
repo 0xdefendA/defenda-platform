@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
 from google.cloud import bigquery, firestore, pubsub_v1
+from google.cloud.firestore_v1.base_query import FieldFilter
 from pydantic import ValidationError
 import sys
 
@@ -184,6 +185,51 @@ def process_inflight_update_tx(
     return True
 
 
+def process_deadman_alert(alert_data: dict):
+    """
+    Deadman alerts fire on ABSENCE, so there are no event IDs to dedup on —
+    left alone they'd create a new alert every cron cycle until the feed
+    recovers. Instead, repeated triggers fold into the existing OPEN alert:
+    increment `deadman_hits`, refresh `last_triggered_at`, and keep a capped
+    sample of the synthetic events. Resolving the alert resets the cycle.
+
+    Single-writer by design (one cron pipeline, one message per rule), so a
+    read-then-write is safe here without a transaction.
+    """
+    alerts_ref = fs_client.collection("alerts")
+    query = (
+        alerts_ref
+        .where(filter=FieldFilter("alert_name", "==", alert_data.get("alert_name")))
+        .where(filter=FieldFilter("alert_type", "==", "deadman"))
+        .where(filter=FieldFilter("status", "==", "OPEN"))
+        .limit(1)
+    )
+    existing = list(query.stream())
+    now = evaluator.datetime.utcnow()
+
+    if existing:
+        doc = existing[0]
+        data = doc.to_dict() or {}
+        hits = int(data.get("deadman_hits") or 1) + 1
+        try:
+            cap = max(1, int(alert_data.get("event_sample_count", 3)))
+        except (TypeError, ValueError):
+            cap = 3
+        events = (data.get("events") or []) + (alert_data.get("events") or [])
+        doc.reference.update({
+            "deadman_hits": hits,
+            "last_triggered_at": now,
+            "events": events[-cap:],
+        })
+        logger.info(f"deadman {alert_data.get('alert_name')} hit #{hits}")
+    else:
+        alert_data = dict(alert_data)
+        alert_data["deadman_hits"] = 1
+        alert_data["last_triggered_at"] = now
+        alert_obj = Alert(**alert_data)
+        alerts_ref.document(alert_obj.alert_id).set(alert_obj.model_dump())
+
+
 @app.post("/evaluate")
 async def handle_evaluate(request: Request):
     """
@@ -218,7 +264,7 @@ async def handle_evaluate(request: Request):
     if msg_type == "rule":
         alert_type = rule.get("alert_type")
         if alert_type == "threshold":
-            events = get_events(rule.get("criteria", ""))
+            events = get_events(rule.get("criteria", ""), rule_lookback(rule))
             for alert in evaluator.determine_threshold_trigger(rule, events):
                 # Filter out previously alerted events locally first
                 new_events = [
@@ -232,10 +278,9 @@ async def handle_evaluate(request: Request):
                     process_new_alert_tx(transaction, alert, new_events)
 
         elif alert_type == "deadman":
-            events = get_events(rule.get("criteria", ""))
+            events = get_events(rule.get("criteria", ""), rule_lookback(rule))
             for alert in evaluator.determine_deadman_trigger(rule, events):
-                transaction = fs_client.transaction()
-                process_new_alert_tx(transaction, alert, alert.get("events", []))
+                process_deadman_alert(alert)
 
         elif alert_type == "sequence":
             # For a new sequence, we try to fulfill the first slot
@@ -244,7 +289,7 @@ async def handle_evaluate(request: Request):
                 return {"status": "ignored", "reason": "No slots in sequence"}
 
             first_slot = slots[0]
-            events = get_events(first_slot.get("criteria", ""))
+            events = get_events(first_slot.get("criteria", ""), rule_lookback(first_slot))
 
             if first_slot.get("alert_type") == "threshold":
                 for alert in evaluator.determine_threshold_trigger(first_slot, events):
@@ -306,7 +351,7 @@ async def handle_evaluate(request: Request):
             import chevron
 
             criteria = chevron.render(target_slot.get("criteria", ""), rule)
-            events = get_events(criteria)
+            events = get_events(criteria, rule_lookback(target_slot))
 
             if target_slot.get("alert_type") == "threshold":
                 for alert in evaluator.determine_threshold_trigger(target_slot, events):
@@ -341,12 +386,20 @@ async def handle_evaluate(request: Request):
     return {"status": "ok"}
 
 
-def get_events(criteria: str) -> list:
+def rule_lookback(rule: dict) -> int:
+    """Lookback window in minutes for a rule or sequence slot (default 5)."""
+    try:
+        return int(rule.get("lookback_minutes", 5))
+    except (TypeError, ValueError):
+        return 5
+
+
+def get_events(criteria: str, lookback_minutes: int = 5) -> list:
     """Executes BQ query and returns list of events."""
     if not criteria:
         return []
     try:
-        sql = evaluator.generate_bigquery_sql(criteria, PROJECT_ID)
+        sql = evaluator.generate_bigquery_sql(criteria, PROJECT_ID, lookback_minutes)
         query_job = bq_client.query(sql)
         results = query_job.result()
         events = []

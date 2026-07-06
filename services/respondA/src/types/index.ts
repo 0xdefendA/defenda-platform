@@ -34,6 +34,9 @@ export interface Alert {
     assigneeName?: string | null;
     resolution?: AlertResolution | null;
     impact?: AlertImpact | null;
+    // Deadman alerts: repeated triggers fold into the open alert
+    deadman_hits?: number | null;
+    last_triggered_at?: any | null; // Firestore Timestamp
 }
 
 export interface Theory {

@@ -95,8 +95,21 @@ export const compileCriteria = (rows: CriteriaRow[]): string =>
 
 // --- Rule YAML generation ---------------------------------------------------
 
+export type RuleAlertType = 'threshold' | 'deadman' | 'sequence';
+
+export interface SequenceSlotDraft {
+    criteria: string;
+    aggregation_key: string;
+    threshold: number;
+    event_snippet: string;
+    event_sample_count: number;
+}
+
 export interface ThresholdRuleDraft {
     alert_name: string;
+    /** threshold fires on count >= threshold; deadman fires on count <= threshold;
+     *  sequence fires when all slots trigger in order within the lifespan */
+    alert_type: RuleAlertType;
     severity: string;
     category: string;
     criteria: string;
@@ -106,7 +119,20 @@ export interface ThresholdRuleDraft {
     event_snippet: string;
     event_sample_count: number;
     tags: string[];
+    /** BQ query window in minutes (default 5); deadman rules often want longer */
+    lookback_minutes?: number;
+    /** sequence only */
+    lifespan_days?: number;
+    slots?: SequenceSlotDraft[];
 }
+
+export const emptySlot = (criteria = ''): SequenceSlotDraft => ({
+    criteria,
+    aggregation_key: '',
+    threshold: 1,
+    event_snippet: '',
+    event_sample_count: 3,
+});
 
 const yamlQuote = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
@@ -116,25 +142,63 @@ const yamlQuote = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"
  * known, and it saves a dependency.
  */
 export const generateRuleYaml = (draft: ThresholdRuleDraft): string => {
+    const alertType: RuleAlertType =
+        draft.alert_type === 'deadman' || draft.alert_type === 'sequence'
+            ? draft.alert_type
+            : 'threshold';
     const lines: string[] = ['---'];
     lines.push(`alert_name: ${yamlQuote(draft.alert_name)}`);
-    lines.push(`alert_type: "threshold"`);
+    lines.push(`alert_type: "${alertType}"`);
     lines.push(`category: ${yamlQuote(draft.category)}`);
-    lines.push(`criteria: ${yamlQuote(draft.criteria)}`);
+
+    if (alertType === 'sequence') {
+        lines.push(`lifespan: "${Math.max(1, Math.floor(draft.lifespan_days ?? 7))} days"`);
+    } else {
+        lines.push(`criteria: ${yamlQuote(draft.criteria)}`);
+    }
+
     lines.push(`severity: ${yamlQuote(draft.severity)}`);
     lines.push(`summary: ${yamlQuote(draft.summary)}`);
-    if (draft.event_snippet.trim()) {
-        lines.push(`event_snippet: ${yamlQuote(draft.event_snippet)}`);
-        lines.push(`event_sample_count: ${Math.max(0, Math.floor(draft.event_sample_count))}`);
+
+    if (alertType !== 'sequence') {
+        if (draft.event_snippet.trim()) {
+            lines.push(`event_snippet: ${yamlQuote(draft.event_snippet)}`);
+            lines.push(`event_sample_count: ${Math.max(0, Math.floor(draft.event_sample_count))}`);
+        }
+        // deadman commonly uses 0 ("no events at all"); threshold needs >= 1
+        const minThreshold = alertType === 'deadman' ? 0 : 1;
+        lines.push(`threshold: ${Math.max(minThreshold, Math.floor(draft.threshold))}`);
+        if (draft.aggregation_key.trim() && draft.aggregation_key !== 'none') {
+            lines.push(`aggregation_key: ${yamlQuote(draft.aggregation_key)}`);
+        }
+        const lookback = Math.floor(draft.lookback_minutes ?? 5);
+        if (alertType === 'deadman' || lookback !== 5) {
+            lines.push(`lookback_minutes: ${Math.max(1, lookback)}`);
+        }
     }
-    lines.push(`threshold: ${Math.max(1, Math.floor(draft.threshold))}`);
-    if (draft.aggregation_key.trim() && draft.aggregation_key !== 'none') {
-        lines.push(`aggregation_key: ${yamlQuote(draft.aggregation_key)}`);
-    }
+
     if (draft.tags.length > 0) {
         lines.push('tags:');
         draft.tags.forEach(t => lines.push(`  - ${yamlQuote(t)}`));
     }
+
+    if (alertType === 'sequence') {
+        lines.push('slots:');
+        (draft.slots ?? []).forEach((slot, i) => {
+            lines.push(`  - alert_name: ${yamlQuote(`${draft.alert_name || 'rule'}_slot_${i + 1}`)}`);
+            lines.push(`    alert_type: "threshold"`);
+            lines.push(`    criteria: ${yamlQuote(slot.criteria)}`);
+            lines.push(`    threshold: ${Math.max(1, Math.floor(slot.threshold))}`);
+            if (slot.aggregation_key.trim() && slot.aggregation_key !== 'none') {
+                lines.push(`    aggregation_key: ${yamlQuote(slot.aggregation_key)}`);
+            }
+            if (slot.event_snippet.trim()) {
+                lines.push(`    event_snippet: ${yamlQuote(slot.event_snippet)}`);
+                lines.push(`    event_sample_count: ${Math.max(0, Math.floor(slot.event_sample_count))}`);
+            }
+        });
+    }
+
     return lines.join('\n') + '\n';
 };
 

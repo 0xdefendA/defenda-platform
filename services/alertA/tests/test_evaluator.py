@@ -150,3 +150,25 @@ def test_sequence_alert_slot_templating():
     rule["metadata"] = {"count": 2}
     final_summary = chevron.render(rule["summary"], rule)
     assert final_summary == "Multiple 2 risky logins by Jane Doe"
+
+
+def test_generate_bigquery_sql_default_lookback():
+    sql = evaluator.generate_bigquery_sql("source='x'", "proj")
+    assert "INTERVAL 5 MINUTE" in sql
+
+
+def test_generate_bigquery_sql_custom_lookback():
+    sql = evaluator.generate_bigquery_sql("source='x'", "proj", lookback_minutes=120)
+    assert "INTERVAL 120 MINUTE" in sql
+
+
+def test_generate_bigquery_sql_lookback_clamped_and_safe():
+    # Absurd values clamp to the retention ceiling
+    sql = evaluator.generate_bigquery_sql("source='x'", "proj", lookback_minutes=10**9)
+    assert f"INTERVAL {evaluator.MAX_LOOKBACK_MINUTES} MINUTE" in sql
+    # Garbage falls back to the default
+    sql = evaluator.generate_bigquery_sql("source='x'", "proj", lookback_minutes="nope")
+    assert "INTERVAL 5 MINUTE" in sql
+    # Zero/negative clamp to 1
+    sql = evaluator.generate_bigquery_sql("source='x'", "proj", lookback_minutes=0)
+    assert "INTERVAL 1 MINUTE" in sql

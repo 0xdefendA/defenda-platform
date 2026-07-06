@@ -22,6 +22,10 @@ class Alert(BaseModel):
     status: AlertStatus = AlertStatus.OPEN
     created_at: datetime = Field(default_factory=datetime.utcnow)
     events: List[Dict[str, Any]] = []  # Raw event data that triggered this
+    # Deadman-only: repeated triggers fold into the open alert instead of
+    # creating duplicates; hits counts how many cycles it has fired.
+    deadman_hits: Optional[int] = None
+    last_triggered_at: Optional[datetime] = None
 
 
 class InflightSequenceAlert(BaseModel):
@@ -49,5 +53,6 @@ class RuleDefinition(BaseModel):
     aggregation_key: Optional[str] = ""
     event_snippet: Optional[str] = ""
     event_sample_count: Optional[int] = 3
+    lookback_minutes: Optional[int] = 5  # BQ query window; deadman rules often want longer
     lifespan: Optional[str] = None  # For sequence alerts e.g. "3 days"
     slots: Optional[List[Dict[str, Any]]] = None  # For sequence alerts

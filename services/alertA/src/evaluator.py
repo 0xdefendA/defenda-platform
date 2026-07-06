@@ -4,18 +4,29 @@ from collections import Counter
 from datetime import datetime
 
 
-def generate_bigquery_sql(criteria: str, project_id: str) -> str:
+MAX_LOOKBACK_MINUTES = 612000  # 425 days, matches table retention
+
+
+def generate_bigquery_sql(criteria: str, project_id: str, lookback_minutes: int = 5) -> str:
     """
     Generates a BigQuery SQL statement for rule evaluation.
     Assumes rules are written for BigQuery Native JSON
     (e.g., STRING(details.eventname) = 'ConsoleLogin')
+
+    lookback_minutes defaults to 5 (a buffer for late arriving logs);
+    deadman rules in particular often want a longer window via the
+    `lookback_minutes` rule field.
     """
-    # Using 5 minutes to give a buffer for late arriving logs.
+    try:
+        lookback = max(1, min(int(lookback_minutes), MAX_LOOKBACK_MINUTES))
+    except (TypeError, ValueError):
+        lookback = 5
+
     query = f"""
     SELECT *
     FROM `{project_id}.defenda_data_lake.events`
     WHERE {criteria}
-    AND utctimestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 5 MINUTE)
+    AND utctimestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {lookback} MINUTE)
     LIMIT 1000
     """
     return query
