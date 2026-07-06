@@ -214,7 +214,9 @@ export const TriagePage = () => {
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
                 <Header
                     presences={presences.filter(p => p.activeContextId === 'triage-queue')}
+                    title="Triage Queue"
                     searchTerm={searchTerm}
+                    searchPlaceholder="Search alerts..."
                     onSearchChange={setSearchTerm}
                 />
 

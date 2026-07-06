@@ -4,12 +4,22 @@ import type { Presence } from '../../types';
 
 interface HeaderProps {
     presences?: Presence[];
+    title?: string;
     searchTerm?: string;
+    searchPlaceholder?: string;
+    /** Search UI only renders when a handler is provided. */
     onSearchChange?: (term: string) => void;
 }
 
-export const Header = ({ presences = [], searchTerm = '', onSearchChange }: HeaderProps) => {
+export const Header = ({
+    presences = [],
+    title = 'Triage Queue',
+    searchTerm = '',
+    searchPlaceholder = 'Search…',
+    onSearchChange,
+}: HeaderProps) => {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const searchable = !!onSearchChange;
 
     return (
         <header className="h-[48px] bg-surface border-b border-thin border-border-color flex items-center justify-between px-6 flex-shrink-0 z-10 w-full sticky top-0">
@@ -18,11 +28,12 @@ export const Header = ({ presences = [], searchTerm = '', onSearchChange }: Head
                 <button className="md:hidden text-text-main hover:text-primary">
                     <span className="material-symbols-outlined">menu</span>
                 </button>
-                <h2 className="font-display text-sm font-semibold tracking-wide uppercase text-muted">Triage Queue</h2>
+                <h2 className="font-display text-sm font-semibold tracking-wide uppercase text-muted">{title}</h2>
             </div>
 
             {/* Multiplayer Presence */}
             <div className="flex items-center gap-3">
+                {searchable && (
                 <div className="flex items-center">
                     {isSearchOpen ? (
                         <div className="relative flex items-center">
@@ -31,7 +42,7 @@ export const Header = ({ presences = [], searchTerm = '', onSearchChange }: Head
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => onSearchChange?.(e.target.value)}
-                                placeholder="Search alerts..."
+                                placeholder={searchPlaceholder}
                                 className="h-8 w-48 lg:w-64 pl-8 pr-8 border border-primary text-xs focus:outline-none focus:ring-0"
                                 onBlur={() => !searchTerm && setIsSearchOpen(false)}
                             />
@@ -54,11 +65,12 @@ export const Header = ({ presences = [], searchTerm = '', onSearchChange }: Head
                         </button>
                     )}
                 </div>
+                )}
 
                 <span className="text-xs text-muted font-mono hidden sm:inline-block ml-2">
                     {presences.length === 0
                         ? 'Just you'
-                        : `${presences.length} other ${presences.length === 1 ? 'analyst' : 'analysts'} here`}
+                        : `${presences.length} ${presences.length === 1 ? 'other' : 'others'} here`}
                 </span>
                 <AvatarCluster presences={presences} />
             </div>

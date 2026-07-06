@@ -16,6 +16,7 @@ import {
 } from '../lib/columns';
 import { matchesAllRows } from '../lib/filter';
 import { useColumnDrag } from '../hooks/useColumnDrag';
+import { usePresence } from '../hooks/usePresence';
 import { useColumnResize } from '../hooks/useColumnResize';
 
 // Width hints for well-known columns; anything else shares remaining space.
@@ -39,6 +40,7 @@ export const IncidentsPage = () => {
     const [columns, setColumns] = useState<EventColumn[]>(
         () => loadColumns(INCIDENTS_COLUMNS_KEY, INCIDENT_DEFAULT_COLUMNS)
     );
+    const { presences } = usePresence('incidents-list');
 
     useEffect(() => {
         const q = query(
@@ -146,7 +148,13 @@ export const IncidentsPage = () => {
             <Sidebar onCreateIncident={handleCreateIncident} />
 
             <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-                <Header searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                <Header
+                    presences={presences}
+                    title="Incidents"
+                    searchTerm={searchTerm}
+                    searchPlaceholder="Search incidents..."
+                    onSearchChange={setSearchTerm}
+                />
 
                 <FilterBar
                     rows={filterRows}

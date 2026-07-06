@@ -227,7 +227,7 @@ export const IncidentWorkspace = () => {
 
     return (
         <div className="flex flex-col h-screen bg-background">
-            <Header presences={presences} />
+            <Header presences={presences} title="Incident Workspace" />
 
             {/* Sub-header */}
             <div className="h-14 border-b border-border bg-surface px-6 flex items-center justify-between">

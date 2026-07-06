@@ -44,7 +44,7 @@ export const AvatarCluster = ({ presences, limit = 4 }: AvatarClusterProps) => {
             {overflow > 0 && (
                 <div
                     className="w-6 h-6 rounded-full border-2 border-surface bg-row-hover flex items-center justify-center text-[9px] font-mono font-bold text-text-main z-0"
-                    title={`${overflow} more analyst${overflow === 1 ? '' : 's'}: ${presences.slice(limit).map(p => p.userName || p.userId).join(', ')}`}
+                    title={`${overflow} more: ${presences.slice(limit).map(p => p.userName || p.userId).join(', ')}`}
                 >
                     +{overflow}
                 </div>
