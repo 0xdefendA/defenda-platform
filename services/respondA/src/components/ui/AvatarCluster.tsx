@@ -7,14 +7,15 @@ interface AvatarClusterProps {
 
 export const AvatarCluster = ({ presences, limit = 4 }: AvatarClusterProps) => {
     const visiblePresences = presences.slice(0, limit);
+    const overflow = presences.length - visiblePresences.length;
 
     return (
         <div className="flex -space-x-2">
             {visiblePresences.map((presence, idx) => {
-                const userName = (presence as any).userName || presence.userId;
+                const userName = presence.userName || presence.userId;
                 const initials = userName.substring(0, 2).toUpperCase();
-                const userColor = (presence as any).userColor || '#0055FF';
-                const userPhoto = (presence as any).userPhoto;
+                const userColor = presence.userColor || '#0055FF';
+                const userPhoto = presence.userPhoto;
 
                 return (
                     <div
@@ -40,6 +41,14 @@ export const AvatarCluster = ({ presences, limit = 4 }: AvatarClusterProps) => {
                     </div>
                 );
             })}
+            {overflow > 0 && (
+                <div
+                    className="w-6 h-6 rounded-full border-2 border-surface bg-row-hover flex items-center justify-center text-[9px] font-mono font-bold text-text-main z-0"
+                    title={`${overflow} more analyst${overflow === 1 ? '' : 's'}: ${presences.slice(limit).map(p => p.userName || p.userId).join(', ')}`}
+                >
+                    +{overflow}
+                </div>
+            )}
         </div>
     );
 };

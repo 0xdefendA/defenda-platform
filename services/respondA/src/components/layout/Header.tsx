@@ -56,7 +56,9 @@ export const Header = ({ presences = [], searchTerm = '', onSearchChange }: Head
                 </div>
 
                 <span className="text-xs text-muted font-mono hidden sm:inline-block ml-2">
-                    {presences.length} Active {presences.length === 1 ? 'Analyst' : 'Analysts'}
+                    {presences.length === 0
+                        ? 'Just you'
+                        : `${presences.length} other ${presences.length === 1 ? 'analyst' : 'analysts'} here`}
                 </span>
                 <AvatarCluster presences={presences} />
             </div>

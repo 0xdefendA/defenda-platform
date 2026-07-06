@@ -13,9 +13,12 @@ export interface User {
 
 export interface Presence {
     userId: string;
-    cursor: { x: number; y: number } | null;
+    userName?: string;
+    userColor?: string;
+    userPhoto?: string | null;
+    cursor?: { x: number; y: number } | null;
     activeContextId: string | null;
-    lastActive: number;
+    lastActive: any; // Firestore Timestamp (or epoch ms from older docs)
 }
 
 export interface Alert {
