@@ -8,6 +8,7 @@ import uuid
 class AlertStatus(str, Enum):
     OPEN = "OPEN"
     ACKNOWLEDGED = "ACKNOWLEDGED"
+    ESCALATED = "ESCALATED"  # promoted to an incident (set by respondA)
     RESOLVED = "RESOLVED"
 
 
