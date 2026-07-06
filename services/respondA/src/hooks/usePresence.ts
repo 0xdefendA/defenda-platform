@@ -5,12 +5,15 @@ import { useAuth } from './useAuth';
 import { useProfile } from './useProfile';
 import type { Presence } from '../types';
 
-// Chrome throttles timers in background tabs to ~1/minute ("intensive
-// throttling"), so the stale window must comfortably exceed a throttled
-// heartbeat interval or presence flaps when analysts switch tabs.
-const STALE_MS = 150_000;    // gone after 2.5min without a heartbeat (crash, closed tab)
-const HEARTBEAT_MS = 15_000; // refresh lastActive every 15s while mounted (foreground)
-const TICK_MS = 10_000;      // re-evaluate staleness locally even without snapshots
+// Browsers heavily throttle timers in background tabs (Chrome to ~1/minute,
+// Firefox via budget throttling), so heartbeats from hidden tabs are
+// unreliable. Presence therefore treats DOC EXISTENCE as "here": departure
+// is the explicit delete on unmount/pagehide, and the stale cutoff is only
+// garbage collection for crashed sessions — generous enough that throttled
+// background heartbeats always land within it.
+const STALE_MS = 600_000;    // GC after 10min without any heartbeat (crash/kill)
+const HEARTBEAT_MS = 60_000; // refresh lastActive every minute
+const TICK_MS = 30_000;      // re-evaluate staleness locally even without snapshots
 
 /**
  * Publishes this analyst's presence for a context (screen/alert/incident)
@@ -79,11 +82,10 @@ export const usePresence = (contextId: string | null) => {
         write();
         const heartbeat = setInterval(write, HEARTBEAT_MS);
 
-        // Returning to a backgrounded tab: write immediately rather than
-        // waiting out a (possibly throttled) interval.
-        const onVisible = () => {
-            if (document.visibilityState === 'visible') write();
-        };
+        // Write on both hide and show: a fresh timestamp when backgrounding
+        // buys the full stale window even if throttled heartbeats never fire,
+        // and returning to the tab refreshes immediately.
+        const onVisible = () => write();
         document.addEventListener('visibilitychange', onVisible);
         window.addEventListener('focus', onVisible);
 
