@@ -146,10 +146,6 @@ export const TriagePage = () => {
         }
     };
 
-    const handleAction = (alertId: string, type: 'parry' | 'riposte', action: string) => {
-        console.log(`Executing ${type}: ${action} on alert ${alertId}`);
-    };
-
     const handleClaim = async (alertId: string) => {
         if (!user) return;
         try {
@@ -255,7 +251,6 @@ export const TriagePage = () => {
                 onClose={() => setSelectedAlert(null)}
                 onEscalate={handleEscalate}
                 onResolve={handleResolve}
-                onAction={handleAction}
             />
         </div>
     );

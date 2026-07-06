@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import type { Alert, AlertResolution, AlertImpact } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
 import { TelemetryBlock } from './TelemetryBlock';
-import { ParryRiposte } from './ParryRiposte';
 import { AlertResolutionForm } from './AlertResolution';
 import { useKey } from 'react-use';
 
@@ -13,15 +12,13 @@ interface ActionCanvasProps {
     onClose: () => void;
     onEscalate: (alertId: string) => void;
     onResolve: (alertId: string, resolution: AlertResolution | null, impact: AlertImpact | null) => void;
-    onAction: (alertId: string, type: 'parry' | 'riposte', action: string) => void;
 }
 
 export const ActionCanvas = ({
     alert,
     onClose,
     onEscalate,
-    onResolve,
-    onAction
+    onResolve
 }: ActionCanvasProps) => {
     useKey("Escape", () => {
         if (alert !== null) {
@@ -89,9 +86,37 @@ export const ActionCanvas = ({
                                 </section>
 
                                 <div className="grid grid-cols-5 gap-8">
-                                    {/* Response Actions Section */}
+                                    {/* Alert Context Section */}
                                     <section className="col-span-3 space-y-4">
-                                        <ParryRiposte onAction={(type, action) => onAction(alert.id, type, action)} />
+                                        <label className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted block">Alert Context</label>
+                                        <div className="border border-border rounded-xl p-4 grid grid-cols-2 gap-x-6 gap-y-3">
+                                            <ContextField label="Category" value={alert.category || '—'} />
+                                            <ContextField label="Rule type" value={alert.alert_type || 'threshold'} />
+                                            <ContextField label="Status" value={alert.status} />
+                                            <ContextField
+                                                label="Created (UTC)"
+                                                value={(alert.created_at as any)?.toDate?.()?.toISOString().replace('T', ' ').slice(0, 19) || '—'}
+                                            />
+                                            <ContextField label="Events attached" value={String(alert.events?.length ?? 0)} />
+                                            <ContextField label="Assignee" value={alert.assigneeName || 'Unassigned'} />
+                                            <div className="col-span-2">
+                                                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted block mb-1">Tags</span>
+                                                {alert.tags?.length ? (
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {alert.tags.map(tag => (
+                                                            <span key={tag} className="px-2 py-0.5 border border-border-color rounded font-mono text-[10px] text-muted">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-xs text-muted">—</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <p className="text-[11px] text-muted leading-relaxed">
+                                            Summary: <span className="text-text-main">{alert.summary}</span>
+                                        </p>
                                     </section>
 
                                     {/* Resolution Section or Linked Incident */}
@@ -133,6 +158,13 @@ export const ActionCanvas = ({
         </AnimatePresence>
     );
 };
+
+const ContextField = ({ label, value }: { label: string; value: string }) => (
+    <div>
+        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted block mb-1">{label}</span>
+        <span className="text-xs font-mono text-text-main break-all">{value}</span>
+    </div>
+);
 
 const DeadmanStatus = ({ hits, lastTriggeredAt }: { hits: number; lastTriggeredAt?: any }) => {
     const lastDate: Date | null = lastTriggeredAt?.toDate?.() ?? null;
