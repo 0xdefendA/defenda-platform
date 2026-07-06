@@ -26,7 +26,7 @@ const emptyDraft = (criteria: string): ThresholdRuleDraft => ({
     severity: 'INFO',
     category: 'general',
     criteria,
-    summary: '{{metadata.value}} matched {{metadata.count}} times',
+    summary: DEFAULT_SUMMARIES.threshold,
     threshold: 1,
     aggregation_key: '',
     event_snippet: '',
@@ -34,6 +34,15 @@ const emptyDraft = (criteria: string): ThresholdRuleDraft => ({
     tags: [],
     lookback_minutes: 5,
 });
+
+// Type-appropriate summary templates. Deadman fires on ABSENCE, so
+// {{metadata.count}} is ~0 and {{metadata.value}} is 'all' — a threshold-style
+// summary renders as nonsense like "all matched 0 times".
+const DEFAULT_SUMMARIES: Record<RuleAlertType, string> = {
+    threshold: '{{metadata.value}} matched {{metadata.count}} times',
+    deadman: 'Deadman: no matching events in the last {{lookback_minutes}} minutes',
+    sequence: '{{alert_name}}: all sequence slots triggered',
+};
 
 const TYPE_HELP: Record<RuleAlertType, string> = {
     threshold: 'Threshold: fires when count ≥ threshold within the lookback window, grouped by the aggregation key.',
@@ -75,10 +84,14 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose]);
 
-    const effectiveDraft = useMemo(
-        () => ({ ...draft, tags: tagsInput.split(',').map(t => t.trim()).filter(Boolean) }),
-        [draft, tagsInput]
-    );
+    const effectiveDraft = useMemo(() => {
+        const merged = { ...draft, tags: tagsInput.split(',').map(t => t.trim()).filter(Boolean) };
+        // Firestore rejects undefined field values — strip optional fields
+        // that aren't set (slots/lifespan_days on non-sequence rules, etc.).
+        return Object.fromEntries(
+            Object.entries(merged).filter(([, v]) => v !== undefined)
+        ) as unknown as ThresholdRuleDraft;
+    }, [draft, tagsInput]);
 
     const yaml = rawOnly ? rawYaml : generateRuleYaml(effectiveDraft);
 
@@ -93,16 +106,19 @@ export const RuleEditorModal = ({ criteria = '', existing = null, onClose, onSav
             : !!(nameValid && draft.criteria.trim() && draft.summary.trim());
 
     const handleTypeChange = (t: RuleAlertType) => {
+        // Swap in the type-appropriate summary template, but never clobber
+        // text the analyst has customized.
+        const summaryUntouched = Object.values(DEFAULT_SUMMARIES).includes(draft.summary);
+        const patch: Partial<ThresholdRuleDraft> = {
+            alert_type: t,
+            ...(summaryUntouched ? { summary: DEFAULT_SUMMARIES[t] } : {}),
+        };
         if (t === 'sequence' && slots.length === 0) {
             // Seed slot 0 from the current criteria so nothing typed is lost.
-            set({
-                alert_type: t,
-                lifespan_days: draft.lifespan_days ?? 7,
-                slots: [emptySlot(draft.criteria), emptySlot()],
-            });
-        } else {
-            set({ alert_type: t });
+            patch.lifespan_days = draft.lifespan_days ?? 7;
+            patch.slots = [emptySlot(draft.criteria), emptySlot()];
         }
+        set(patch);
     };
 
     const updateSlot = (index: number, patch: Partial<SequenceSlotDraft>) => {
