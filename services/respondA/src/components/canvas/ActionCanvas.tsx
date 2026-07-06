@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink, ShieldAlert } from 'lucide-react';
+import { X, ExternalLink, ShieldAlert, HeartPulse } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Alert, AlertResolution, AlertImpact } from '../../types';
 import { SeverityBadge } from '../ui/SeverityBadge';
@@ -69,6 +69,16 @@ export const ActionCanvas = ({
 
                         <div className="flex-1 overflow-auto">
                             <div className="p-6 space-y-8">
+                                {/* Deadman trigger status: repeated triggers fold into
+                                    this alert, so hits + recency show whether the
+                                    absence is ongoing or has recovered. */}
+                                {alert.alert_type === 'deadman' && alert.deadman_hits && (
+                                    <DeadmanStatus
+                                        hits={alert.deadman_hits}
+                                        lastTriggeredAt={alert.last_triggered_at}
+                                    />
+                                )}
+
                                 {/* Alert Details Section */}
                                 <section className="space-y-4">
                                     <div className="flex justify-between items-end">
@@ -121,5 +131,27 @@ export const ActionCanvas = ({
                 </>
             )}
         </AnimatePresence>
+    );
+};
+
+const DeadmanStatus = ({ hits, lastTriggeredAt }: { hits: number; lastTriggeredAt?: any }) => {
+    const lastDate: Date | null = lastTriggeredAt?.toDate?.() ?? null;
+    const minutesAgo = lastDate ? Math.round((Date.now() - lastDate.getTime()) / 60000) : null;
+    // alertA evaluates every minute; if the last hit is recent, the absence is ongoing.
+    const ongoing = minutesAgo !== null && minutesAgo <= 3;
+
+    return (
+        <div className={`flex items-center gap-3 border rounded-xl px-4 py-3 ${ongoing ? 'border-accent/30 bg-accent/5' : 'border-success/30 bg-success/5'}`}>
+            <HeartPulse className={`w-5 h-5 shrink-0 ${ongoing ? 'text-accent' : 'text-success'}`} />
+            <div className="flex flex-col">
+                <span className={`text-sm font-bold ${ongoing ? 'text-accent' : 'text-success'}`}>
+                    {ongoing ? 'Deadman still firing — absence is ongoing' : 'Deadman quiet — events are flowing again'}
+                </span>
+                <span className="text-xs text-muted font-mono">
+                    {hits} trigger{hits === 1 ? '' : 's'}
+                    {minutesAgo !== null && ` · last ${minutesAgo <= 1 ? 'about a minute' : `${minutesAgo} minutes`} ago`}
+                </span>
+            </div>
+        </div>
     );
 };
