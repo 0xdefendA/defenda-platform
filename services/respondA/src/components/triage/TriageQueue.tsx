@@ -88,8 +88,12 @@ export const TriageQueue = ({
 
     return (
         <div className="flex-1 overflow-auto bg-surface relative">
+            {/* w-max lets rows grow to the grid's content width when columns are
+                resized wider than the viewport, so separators span the full row;
+                min-w-full keeps everything viewport-wide otherwise. */}
+            <div className="w-max min-w-full">
             {/* Table Header */}
-            <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20 min-w-[1000px]">
+            <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20">
                 <div
                     className="grid items-center px-4 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10"
                     style={{ gridTemplateColumns: gridTemplate }}
@@ -152,6 +156,7 @@ export const TriageQueue = ({
                         <p className="font-display text-2xl font-semibold text-muted">Queue Clear. En Garde.</p>
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

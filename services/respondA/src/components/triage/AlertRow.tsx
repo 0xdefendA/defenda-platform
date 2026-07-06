@@ -29,7 +29,7 @@ export const AlertRow = ({
                 if ((e.target as HTMLElement).closest('button')) return;
                 onClick(alert);
             }}
-            className="grid items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative min-w-[1000px]"
+            className="grid items-center px-4 py-3 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer relative"
             style={{ gridTemplateColumns: gridTemplate }}
         >
             {/* Presence Indicator line */}

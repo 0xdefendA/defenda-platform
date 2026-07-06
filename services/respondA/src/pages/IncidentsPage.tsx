@@ -159,8 +159,10 @@ export const IncidentsPage = () => {
                 />
 
                 <div className="flex-1 overflow-auto bg-surface relative">
+                    {/* w-max: rows grow with resized columns so separators span full width */}
+                    <div className="w-max min-w-full">
                     {/* Table Header */}
-                    <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20 min-w-[900px]">
+                    <div className="sticky top-0 bg-background-light border-b border-thin border-border-color z-20">
                         <div
                             className="grid items-center px-6 py-2 text-[10px] font-display text-muted uppercase tracking-wider h-10"
                             style={{ gridTemplateColumns: gridTemplate }}
@@ -212,7 +214,7 @@ export const IncidentsPage = () => {
                             <div
                                 key={incident.id}
                                 onClick={() => navigate(`/incident/${incident.id}`)}
-                                className="grid items-center px-6 py-4 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer min-w-[900px]"
+                                className="grid items-center px-6 py-4 border-b border-thin border-border-color hover:bg-row-hover group transition-colors cursor-pointer"
                                 style={{ gridTemplateColumns: gridTemplate }}
                             >
                                 {columns.map(col => (
@@ -232,6 +234,7 @@ export const IncidentsPage = () => {
                                 </p>
                             </div>
                         )}
+                    </div>
                     </div>
                 </div>
             </main>
