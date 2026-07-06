@@ -1,7 +1,8 @@
 import chevron
-from typing import List, Dict, Any, Generator
+import time
+from typing import Any, Dict, Generator, List, Optional
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 MAX_LOOKBACK_MINUTES = 612000  # 425 days, matches table retention
@@ -30,6 +31,36 @@ def generate_bigquery_sql(criteria: str, project_id: str, lookback_minutes: int 
     LIMIT 1000
     """
     return query
+
+
+def is_expired(expiration: Any, now_ts: Optional[float] = None) -> bool:
+    """
+    True when an inflight alert's expiration has passed. Expiration may be a
+    Firestore timestamp (datetime-like with .timestamp()), an ISO string
+    (legacy docs), or missing/garbage (never expires — safer than deleting).
+    """
+    if now_ts is None:
+        now_ts = time.time()
+
+    if expiration is None:
+        return False
+    if hasattr(expiration, "timestamp"):
+        try:
+            return expiration.timestamp() < now_ts
+        except (ValueError, OverflowError, OSError):
+            return False
+    if isinstance(expiration, str):
+        try:
+            parsed = datetime.fromisoformat(expiration)
+            if parsed.tzinfo is None:
+                # Naive strings (legacy docs) are written from UTC wall time.
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.timestamp() < now_ts
+        except (ValueError, OverflowError, OSError):
+            return False
+    if isinstance(expiration, (int, float)):
+        return float(expiration) < now_ts
+    return False
 
 
 def get_value_by_path(d: dict, path: str) -> Any:

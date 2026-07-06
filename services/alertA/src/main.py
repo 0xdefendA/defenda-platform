@@ -1,9 +1,11 @@
 import os
+import copy
 import glob
 import yaml
 import json
 import base64
 import logging
+from datetime import timedelta
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException
 from google.cloud import bigquery, firestore, pubsub_v1
@@ -96,13 +98,16 @@ async def handle_cron():
         publisher.publish(TOPIC_NAME, data_str)
         published_count += 1
 
-    # 3. Housekeeping (Expire old inflight alerts)
-    now = evaluator.datetime.utcnow().isoformat()
-    # Simple cleanup: fetch all and delete if expired
-    for doc in inflight_ref.stream():
-        data = doc.to_dict()
-        if data.get("expiration", "9999") < now:
-            doc.reference.delete()
+    # 3. Housekeeping (Expire old inflight alerts). This enforces sequence
+    # lifespans; guarded so a bad document can never fail the whole cron.
+    try:
+        for doc in inflight_ref.stream():
+            data = doc.to_dict() or {}
+            if evaluator.is_expired(data.get("expiration")):
+                logger.info(f"Expiring inflight sequence alert {doc.id}")
+                doc.reference.delete()
+    except Exception as e:
+        logger.error(f"Inflight housekeeping failed: {e}")
 
     return {"status": "ok", "published": published_count}
 
@@ -300,26 +305,24 @@ async def handle_evaluate(request: Request):
                     ]
                     if new_events:
                         alert["events"] = new_events
-                        # Create inflight alert
-                        inflight = rule.copy()
+                        # Create inflight alert. Deep copy: a shallow copy
+                        # shares the slots list with the rule dict, so slot
+                        # updates would leak into subsequent triggers.
+                        inflight = copy.deepcopy(rule)
                         inflight["slots"][0] = alert
 
-                        # Calculate expiration
-                        offset = 3 * 86400  # 3 days default approx
+                        # Calculate expiration from the rule lifespan
+                        offset = 3 * 86400  # 3 days default
                         lifespan = rule.get("lifespan", "3 days")
                         if "day" in lifespan:
                             try:
                                 offset = int(lifespan.split()[0]) * 86400
-                            except:
+                            except (ValueError, IndexError):
                                 pass
 
-                        inflight["expiration"] = (
-                            evaluator.datetime.utcnow().timestamp() + offset
+                        inflight["expiration"] = evaluator.datetime.utcnow() + timedelta(
+                            seconds=offset
                         )
-                        # formatting date back to string for simple json
-                        inflight["expiration"] = evaluator.datetime.fromtimestamp(
-                            inflight["expiration"]
-                        ).isoformat()
 
                         inflight_obj = InflightSequenceAlert(**inflight)
                         inflight_dict = inflight_obj.model_dump()

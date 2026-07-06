@@ -172,3 +172,35 @@ def test_generate_bigquery_sql_lookback_clamped_and_safe():
     # Zero/negative clamp to 1
     sql = evaluator.generate_bigquery_sql("source='x'", "proj", lookback_minutes=0)
     assert "INTERVAL 1 MINUTE" in sql
+
+
+def test_is_expired_datetime_like():
+    from datetime import datetime, timedelta, timezone
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    past = datetime.now(timezone.utc) - timedelta(hours=1)
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    assert evaluator.is_expired(past, now_ts) is True
+    assert evaluator.is_expired(future, now_ts) is False
+
+
+def test_is_expired_iso_string_and_epoch():
+    from datetime import datetime, timedelta, timezone
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    # naive ISO strings are interpreted as UTC
+    past_iso = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(tzinfo=None).isoformat()
+    future_iso = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(tzinfo=None).isoformat()
+
+    assert evaluator.is_expired(past_iso, now_ts) is True
+    assert evaluator.is_expired(future_iso, now_ts) is False
+    assert evaluator.is_expired(now_ts - 60, now_ts) is True
+    assert evaluator.is_expired(now_ts + 60, now_ts) is False
+
+
+def test_is_expired_garbage_never_expires():
+    # Bad data must never cause deletion (or a crash)
+    assert evaluator.is_expired(None) is False
+    assert evaluator.is_expired("not-a-date") is False
+    assert evaluator.is_expired({"weird": True}) is False
