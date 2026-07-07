@@ -1,0 +1,176 @@
+from utils.dotdict import DotDict
+from utils.dates import toUTC
+import logging
+
+logger = logging.getLogger()
+
+# Map GCP service names to human-readable categories
+CATEGORY_MAP = {
+    "iam.googleapis.com": "iam",
+    "cloudresourcemanager.googleapis.com": "iam",
+    "iamcredentials.googleapis.com": "iam",
+    "sts.googleapis.com": "authentication",
+    "login.googleapis.com": "authentication",
+    "storage.googleapis.com": "storage",
+    "bigquery.googleapis.com": "database",
+    "spanner.googleapis.com": "database",
+    "sqladmin.googleapis.com": "database",
+    "firestore.googleapis.com": "database",
+    "compute.googleapis.com": "compute",
+    "run.googleapis.com": "compute",
+    "container.googleapis.com": "compute",
+    "cloudfunctions.googleapis.com": "compute",
+    "cloudkms.googleapis.com": "encryption",
+    "secretmanager.googleapis.com": "secrets",
+    "logging.googleapis.com": "logging",
+    "monitoring.googleapis.com": "monitoring",
+    "pubsub.googleapis.com": "messaging",
+    "cloudscheduler.googleapis.com": "infrastructure",
+    "cloudbuild.googleapis.com": "infrastructure",
+    "serviceusage.googleapis.com": "infrastructure",
+    "dns.googleapis.com": "networking",
+    "networkservices.googleapis.com": "networking",
+}
+
+DESTRUCTIVE_PREFIXES = ("delete", "remove", "destroy", "purge")
+
+
+class message(object):
+    def __init__(self):
+        """
+        Normalize GCP Cloud Audit Logs (LogEntry envelopes delivered by a
+        Cloud Logging sink → Pub/Sub). Detects the AuditLog protoPayload
+        shape, sets source/category/summary, and copies the high-value
+        fields to convenient details.* locations for rules and hunting.
+        """
+        # LogEntry audit records always carry a protoPayload
+        self.registration = ["protopayload"]
+        self.priority = 20
+
+    def onMessage(self, message, metadata):
+        dot_message = DotDict(message)
+
+        # Verify this is a GCP audit LogEntry: AuditLog payload type or a
+        # cloudaudit logName. (Keys are lowercased by an earlier plugin;
+        # values are untouched.)
+        payload_type = str(dot_message.get("details.protopayload.@type", ""))
+        log_name = str(dot_message.get("details.logname", ""))
+        if (
+            "google.cloud.audit.auditlog" not in payload_type.lower()
+            and "cloudaudit.googleapis.com" not in log_name.lower()
+        ):
+            return (message, metadata)
+
+        message["source"] = "gcp_audit"
+        tags = message.get("tags", [])
+        tags.append("gcp_audit")
+        tags.append("gcp")
+
+        # GCP LogEntry severity uses its own scale (DEFAULT/NOTICE/…). Map it
+        # into ours so downstream elevation logic has a known baseline.
+        gcp_sev = str(dot_message.get("details.severity", "")).upper()
+        message["severity"] = {
+            "EMERGENCY": "CRITICAL",
+            "ALERT": "CRITICAL",
+            "CRITICAL": "CRITICAL",
+            "ERROR": "WARNING",
+            "WARNING": "WARNING",
+        }.get(gcp_sev, "INFO")
+
+        # --- Real event time (sink delivery adds lag; use the log's own) ---
+        if dot_message.get("details.timestamp", None):
+            try:
+                message["utctimestamp"] = toUTC(
+                    dot_message.get("details.timestamp")
+                ).isoformat()
+            except (ValueError, TypeError):
+                pass
+
+        # --- Convenience copies of the high-value fields ---
+        principal = dot_message.get(
+            "details.protopayload.authenticationinfo.principalemail", ""
+        )
+        method = dot_message.get("details.protopayload.methodname", "")
+        service = dot_message.get("details.protopayload.servicename", "")
+        resource = dot_message.get("details.protopayload.resourcename", "")
+        caller_ip = dot_message.get(
+            "details.protopayload.requestmetadata.callerip", ""
+        )
+        user_agent = dot_message.get(
+            "details.protopayload.requestmetadata.callersupplieduseragent", ""
+        )
+        project = dot_message.get("details.resource.labels.project_id", "")
+
+        if principal:
+            message["details"]["user"] = principal
+            if principal.endswith("gserviceaccount.com"):
+                tags.append("service-account")
+        if method:
+            message["details"]["methodname"] = method
+        if service:
+            message["details"]["servicename"] = service
+        if resource:
+            message["details"]["resourcename"] = resource
+        if caller_ip:
+            message["details"]["sourceipaddress"] = caller_ip
+        if user_agent:
+            message["details"]["useragent"] = user_agent
+        if project:
+            message["details"]["project"] = project
+
+        # --- Category ---
+        short_service = service.replace(".googleapis.com", "") if service else ""
+        message["category"] = CATEGORY_MAP.get(service, short_service or "gcp")
+
+        # --- IAM policy changes get extra context (stratus invite-external-user
+        # shows up here: SetIamPolicy with bindingDeltas) ---
+        extra_info = None
+        if method.lower().endswith("setiampolicy"):
+            tags.append("iam-policy-change")
+            deltas = (
+                dot_message.get(
+                    "details.protopayload.servicedata.policydelta.bindingdeltas", []
+                )
+                or []
+            )
+            if deltas:
+                first = deltas[0]
+                extra_info = " ".join(
+                    str(first.get(k, "")) for k in ("action", "role", "member")
+                ).strip()
+                if extra_info:
+                    message["details"]["policy_delta"] = extra_info
+                # External (non-serviceaccount, non-google-managed) grants are
+                # the interesting ones; leave domain judgment to rules, but
+                # make the member easy to query.
+                member = str(first.get("member", ""))
+                if member:
+                    message["details"]["policy_member"] = member
+
+        # --- Summary ---
+        parts = [principal or "unknown", method or "unknown"]
+        if resource:
+            parts.append(resource)
+        if extra_info:
+            parts.append(f"({extra_info})")
+        if caller_ip:
+            parts.append(f"from IP {caller_ip}")
+        message["summary"] = " ".join(parts)
+
+        # --- Severity ---
+        # Permission denied / errors are notable
+        status_code = dot_message.get("details.protopayload.status.code", 0)
+        auth_info = dot_message.get("details.protopayload.authorizationinfo", []) or []
+        denied = any(a.get("granted") is False for a in auth_info if isinstance(a, dict))
+        if denied or (isinstance(status_code, int) and status_code != 0):
+            message["severity"] = "WARNING"
+            tags.append("denied" if denied else "error")
+
+        # Destructive actions get elevated severity
+        method_leaf = method.split(".")[-1].lower() if method else ""
+        if method_leaf.startswith(DESTRUCTIVE_PREFIXES):
+            if message.get("severity") == "INFO":
+                message["severity"] = "WARNING"
+
+        message["tags"] = tags
+        return (message, metadata)
