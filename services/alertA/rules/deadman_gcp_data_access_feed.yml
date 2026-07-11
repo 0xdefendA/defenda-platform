@@ -1,0 +1,41 @@
+---
+# GCP Data Access audit logs stopped arriving.
+#
+# This one exists because of a specific, nasty failure mode. Data Access logs are
+# OFF by default in GCP and are enabled by a human, once, out of band
+# (defenda-collectas/scripts/enable_data_access_logs.py). Nothing in terraform
+# enforces them -- deliberately, because giving CI org-level setIamPolicy would
+# hand the deploy pipeline the ability to switch off the platform's own telemetry.
+#
+# The trade for that safety is drift, and THIS RULE IS THE THING THAT CATCHES IT.
+#
+# Why it matters more than a normal feed outage: without Data Access logs,
+# GenerateAccessToken (service-account impersonation) and AccessSecretVersion
+# (secret retrieval) generate NO EVENTS AT ALL. Every credential-access hunt then
+# returns zero rows -- which is indistinguishable from a genuinely quiet
+# environment. The hunt reports "no impersonation found" and it is telling the
+# truth about the data and lying about the world. Silence gets read as safety.
+#
+# It is also the exact thing an attacker turns off first
+# (stratus gcp.defense-evasion.disable-audit-logs). Whether this fires because
+# someone tidied an IAM policy or because someone is hiding, you want to know
+# inside the hour.
+#
+# Window is generous (4h): Data Access volume is genuinely low in a quiet org, and
+# a tight window would page on nothing happening rather than on collection being
+# broken. Cross-check defenda_hunting.feed_coverage when this fires.
+alert_name: "deadman_gcp_data_access_feed"
+alert_type: "deadman"
+category: "deadman"
+criteria: "source='gcp_audit' AND JSON_VALUE(details.audit_log_type) = 'data_access'"
+lookback_minutes: 240
+threshold: 0
+severity: "HIGH"
+summary: "DEADMAN: no GCP Data Access audit logs in 4h -- impersonation and secret-access hunting is BLIND (empty results now mean nothing)"
+event_snippet: "last event: {{summary}}"
+event_sample_count: 1
+tags:
+  - "deadman"
+  - "gcp"
+  - "defense-evasion"
+  - "credential-access"

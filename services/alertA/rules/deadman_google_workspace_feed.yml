@@ -1,0 +1,29 @@
+---
+# Google Workspace audit logs stopped arriving.
+#
+# Workspace is currently the platform's ONLY source of human-identity telemetry --
+# logins, admin actions, OAuth grants, Drive activity. Losing it does not degrade
+# identity hunting, it ends it.
+#
+# Unlike the GCP sink (a push from Cloud Logging), the Workspace collector is a
+# PULL on a schedule with cursor state. It fails differently and more quietly:
+# expired credentials, a revoked OAuth scope, a wedged cursor, or a Cloud
+# Scheduler job that silently stopped. None of those raise anywhere a human looks.
+#
+# Window is 3h: the Reports API is itself lagged (events can take a couple of
+# hours to appear), so a tighter window pages on Google's latency rather than on
+# our failure. This is the honest floor, not a comfortable one.
+alert_name: "deadman_google_workspace_feed"
+alert_type: "deadman"
+category: "deadman"
+criteria: "source='google_workspace'"
+lookback_minutes: 180
+threshold: 0
+severity: "CRITICAL"
+summary: "DEADMAN: no Google Workspace events in 3h -- identity telemetry is down (check collector credentials, OAuth scopes, and cursor state)"
+event_snippet: "last event: {{summary}}"
+event_sample_count: 1
+tags:
+  - "deadman"
+  - "workspace"
+  - "identity"

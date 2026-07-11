@@ -1,0 +1,32 @@
+---
+# alertA's /cron fan-out publishes rules, then inflight sequence alerts. A single
+# undeliverable inflight document used to raise straight out of the loop and 500
+# the whole call. Base rules had already been published, so threshold detections
+# kept working -- which is exactly why nobody noticed. What silently stopped:
+#
+#   * every SEQUENCE rule froze (inflight alerts never fanned out, so they could
+#     never advance past slot 0)
+#   * inflight alerts stopped expiring (housekeeping runs after the fan-out and
+#     was never reached), accumulating forever
+#   * Cloud Scheduler retried the 500 every minute, re-publishing the base rules
+#     on each attempt
+#
+# The fan-out is now per-item guarded, so one poison document costs you that
+# document instead of the sequence engine. But "degraded" must be LOUD, or we
+# have simply replaced a noisy failure with a quiet one -- which is worse. A
+# detection platform that partially works while reporting success is the most
+# dangerous state it can be in.
+alert_name: "alerta_cron_degraded"
+alert_type: "threshold"
+category: "deadman"
+criteria: "source='defenda_platform' AND JSON_VALUE(details.heartbeat) = 'cron' AND CAST(JSON_VALUE(details.failed) AS INT64) > 0"
+lookback_minutes: 10
+threshold: 1
+severity: "HIGH"
+summary: "alertA cron is DEGRADED: {{metadata.count}} heartbeats reporting failed publishes -- some detections are not being evaluated"
+event_snippet: "{{summary}}"
+event_sample_count: 5
+aggregation_key: "details.service"
+tags:
+  - "deadman"
+  - "self-monitoring"

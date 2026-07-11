@@ -72,10 +72,6 @@ resource "google_monitoring_alert_policy" "alerta_5xx" {
       Check:
         gcloud logging read 'resource.labels.service_name="alerta-service" AND severity=ERROR' --limit 20
 
-      Known prior failure (2026-07-11): a single un-serializable Firestore document
-      in `inflight_alerts` raised out of the /cron fan-out loop, 500'd every run,
-      and silently froze all sequence rules. The loop is now per-item guarded, but
-      any NEW unguarded raise in /cron will look exactly like this again.
     DOC
     mime_type = "text/markdown"
   }

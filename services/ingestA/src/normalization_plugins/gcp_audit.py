@@ -66,6 +66,35 @@ class message(object):
         tags.append("gcp_audit")
         tags.append("gcp")
 
+        # --- Which audit log stream is this? ---
+        # Not cosmetic. These streams have wildly different collection semantics:
+        #
+        #   activity      always on, free, everywhere
+        #   data_access   OFF by default, chargeable, only where explicitly enabled
+        #   system_event  always on, free
+        #   policy        always on, chargeable (note: %2Fpolicy, not %2Fpolicy_denied)
+        #
+        # Without this discriminator, "gcp_audit" is one undifferentiated source and
+        # the question a hunt skill needs to ask -- "is the feed I depend on actually
+        # flowing?" -- is unanswerable. A skill built on GenerateAccessToken
+        # (data_access) would silently return empty anywhere data_access is not
+        # enabled, and score perfectly on its eval fixture regardless. This field is
+        # what lets a skill declare `requires: [gcp_data_access]` and be SKIPPED
+        # rather than quietly finding nothing.
+        audit_log_type = "unknown"
+        lowered_log_name = log_name.lower()
+        for suffix, label in (
+            ("%2factivity", "activity"),
+            ("%2fdata_access", "data_access"),
+            ("%2fsystem_event", "system_event"),
+            ("%2fpolicy", "policy_denied"),
+        ):
+            if suffix in lowered_log_name:
+                audit_log_type = label
+                break
+        message["details"]["audit_log_type"] = audit_log_type
+        tags.append(f"gcp_audit_{audit_log_type}")
+
         # GCP LogEntry severity uses its own scale (DEFAULT/NOTICE/…). Map it
         # into ours so downstream elevation logic has a known baseline.
         gcp_sev = str(dot_message.get("details.severity", "")).upper()
