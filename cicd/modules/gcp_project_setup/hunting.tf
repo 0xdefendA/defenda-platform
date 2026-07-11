@@ -138,20 +138,23 @@ resource "google_bigquery_table" "first_seens" {
       GROUP BY identity, value
 
       UNION ALL
-      SELECT identity, 'user_agent', user_agent,
-             MIN(utctimestamp), MAX(utctimestamp), COUNT(*)
+      SELECT identity, 'user_agent' AS dimension, user_agent AS value,
+             MIN(utctimestamp) AS first_seen_at, MAX(utctimestamp) AS last_seen_at,
+             COUNT(*) AS event_count
       FROM attributed WHERE user_agent IS NOT NULL
       GROUP BY identity, value
 
       UNION ALL
-      SELECT identity, 'project', project,
-             MIN(utctimestamp), MAX(utctimestamp), COUNT(*)
+      SELECT identity, 'project' AS dimension, project AS value,
+             MIN(utctimestamp) AS first_seen_at, MAX(utctimestamp) AS last_seen_at,
+             COUNT(*) AS event_count
       FROM attributed WHERE project IS NOT NULL
       GROUP BY identity, value
 
       UNION ALL
-      SELECT identity, 'source', source,
-             MIN(utctimestamp), MAX(utctimestamp), COUNT(*)
+      SELECT identity, 'source' AS dimension, source AS value,
+             MIN(utctimestamp) AS first_seen_at, MAX(utctimestamp) AS last_seen_at,
+             COUNT(*) AS event_count
       FROM attributed WHERE source IS NOT NULL
       GROUP BY identity, value
     SQL
