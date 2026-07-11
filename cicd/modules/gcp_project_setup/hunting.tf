@@ -51,6 +51,13 @@ resource "google_bigquery_table" "identity_events" {
         JSON_VALUE(details.user)              AS identity,
         JSON_VALUE(details.sourceipaddress)   AS source_ip,
         JSON_VALUE(details.useragent)         AS user_agent,
+        -- Which Cloud Audit Log stream this came from: activity | data_access |
+        -- system_event | policy_denied. Load-bearing, not metadata: data_access is
+        -- OFF by default in GCP and only exists where explicitly enabled. A hunt
+        -- that depends on it (impersonation, secret retrieval) must be able to ask
+        -- "is this feed flowing?" rather than reading an empty result as a quiet
+        -- environment.
+        JSON_VALUE(details.audit_log_type)    AS audit_log_type,
         -- gcp_audit / cloudtrail action fields
         COALESCE(
           JSON_VALUE(details.methodname),
@@ -161,6 +168,50 @@ resource "google_bigquery_table" "first_seens" {
   }
 }
 
+# --- feed_coverage -------------------------------------------------------------
+# What telemetry is ACTUALLY flowing, per source and audit stream, over the last
+# 7 days. The answer to "is the feed my hunt depends on alive?"
+#
+# This exists because of the single worst failure mode in the huntA design: a hunt
+# skill that queries a feed nobody is collecting returns zero rows, which is
+# indistinguishable from a genuinely quiet environment. The skill scores perfectly
+# on its eval fixture (captured where the feed DID flow), detects nothing forever
+# in production, and the coverage map reports green. A skill that passes evals and
+# detects nothing is worse than no skill.
+#
+# The orchestrator checks this before dispatching a skill whose frontmatter
+# declares `requires: [gcp_data_access, ...]`, and SKIPS rather than running a hunt
+# that is structurally incapable of finding anything. Silence becomes a skipped
+# hunt and a visible collection gap instead of a false all-clear.
+resource "google_bigquery_table" "feed_coverage" {
+  dataset_id          = google_bigquery_dataset.defenda_hunting.dataset_id
+  table_id            = "feed_coverage"
+  project             = var.project_id
+  deletion_protection = false
+
+  description = "Which telemetry feeds are actually flowing (last 7d). Grain: one row per (source, audit_log_type). The orchestrator gates skills' `requires:` against this so a dead feed skips the hunt instead of silently returning 'nothing found'."
+
+  view {
+    use_legacy_sql = false
+    query          = <<-SQL
+      SELECT
+        source,
+        COALESCE(JSON_VALUE(details.audit_log_type), 'n/a') AS audit_log_type,
+        COUNT(*)                                            AS events_7d,
+        COUNT(DISTINCT JSON_VALUE(details.user))            AS distinct_identities,
+        COUNT(DISTINCT JSON_VALUE(details.project))         AS distinct_projects,
+        MIN(utctimestamp)                                   AS first_event_at,
+        MAX(utctimestamp)                                   AS last_event_at,
+        -- A feed that has not produced an event in 24h is suspect. Deadman rules
+        -- own the alerting; this is the hunt-time view of the same question.
+        TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(utctimestamp), HOUR) AS hours_since_last_event
+      FROM ${local.events_table}
+      WHERE utctimestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+      GROUP BY source, audit_log_type
+    SQL
+  }
+}
+
 # --- iam_changes --------------------------------------------------------------
 # Control-plane persistence/privilege hunting. This is where stratus-red-team
 # gcp.persistence.invite-external-user lands (SetIamPolicy + bindingDeltas).
@@ -182,6 +233,15 @@ resource "google_bigquery_table" "iam_changes" {
         JSON_VALUE(details.methodname)      AS action,
         JSON_VALUE(details.resourcename)    AS resource,
         JSON_VALUE(details.project)         AS project,
+        -- EVERY member/role touched by the SetIamPolicy call. Hunt over THESE.
+        -- A single call routinely carries several bindingDeltas: if a benign
+        -- roles/viewer grant sorts first, the roles/owner grant behind it is
+        -- invisible to the scalar columns below. UNNEST these instead.
+        JSON_VALUE_ARRAY(details.policy_members) AS granted_members,
+        JSON_VALUE_ARRAY(details.policy_roles)   AS granted_roles,
+        -- Scalars: the FIRST binding delta only. Kept for existing rules; a footgun
+        -- for hunting. `granted_member` can name the boring grant while the
+        -- interesting one hides in granted_members.
         JSON_VALUE(details.policy_member)   AS granted_member,
         JSON_VALUE(details.policy_delta)    AS policy_delta,
         JSON_VALUE(details.sourceipaddress) AS source_ip,

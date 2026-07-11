@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars and fill in. gitignored -- do not commit the real one.
+
+detonation_project_id = "defenda-det-XXXXXXXX"   # the project you created by hand
+platform_project_id   = "your-platform-project"  # where the lake lives
+region                = "us-central1"
+campaign_name         = "seed"
+detonator_principals  = ["user:someone@somewhere.com"]
