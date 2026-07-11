@@ -151,8 +151,18 @@ class message(object):
         short_service = service.replace(".googleapis.com", "") if service else ""
         message["category"] = CATEGORY_MAP.get(service, short_service or "gcp")
 
-        # --- IAM policy changes get extra context (stratus invite-external-user
-        # shows up here: SetIamPolicy with bindingDeltas) ---
+        # --- IAM policy changes get extra context ---
+        # A single SetIamPolicy call routinely carries SEVERAL bindingDeltas. This
+        # used to read bindingDeltas[0] and drop the rest, which is worse than a
+        # miss -- it is a confidently wrong answer. stratus
+        # create-admin-service-account is the canonical case: if a benign
+        # roles/viewer grant happens to sort first, the roles/owner grant behind it
+        # vanishes, iam_changes.granted_member reports the boring one, and the
+        # external-grant hunt returns clean.
+        #
+        # Every delta is now captured. policy_member/policy_delta are kept as
+        # scalars for backwards compatibility, but they are the FIRST delta only --
+        # hunts should use the *_members / *_roles arrays. See docs/hunting_schema.md.
         extra_info = None
         if method.lower().endswith("setiampolicy"):
             tags.append("iam-policy-change")
@@ -162,19 +172,37 @@ class message(object):
                 )
                 or []
             )
+            deltas = [d for d in deltas if isinstance(d, dict)]
+
             if deltas:
-                first = deltas[0]
-                extra_info = " ".join(
-                    str(first.get(k, "")) for k in ("action", "role", "member")
-                ).strip()
-                if extra_info:
+                rendered = [
+                    " ".join(
+                        str(d.get(k, "")) for k in ("action", "role", "member")
+                    ).strip()
+                    for d in deltas
+                ]
+                rendered = [r for r in rendered if r]
+
+                members = [str(d.get("member", "")) for d in deltas if d.get("member")]
+                roles = [str(d.get("role", "")) for d in deltas if d.get("role")]
+
+                # Arrays: the truth. Hunt over these.
+                if members:
+                    message["details"]["policy_members"] = members
+                if roles:
+                    message["details"]["policy_roles"] = roles
+                if len(deltas) > 1:
+                    # Makes the multi-delta case findable, and stops a future
+                    # reader assuming the scalar fields tell the whole story.
+                    tags.append("multi-binding-change")
+                    message["details"]["policy_delta_count"] = len(deltas)
+
+                # Scalars: first delta only, retained for existing rules/views.
+                if rendered:
+                    extra_info = "; ".join(rendered)
                     message["details"]["policy_delta"] = extra_info
-                # External (non-serviceaccount, non-google-managed) grants are
-                # the interesting ones; leave domain judgment to rules, but
-                # make the member easy to query.
-                member = str(first.get("member", ""))
-                if member:
-                    message["details"]["policy_member"] = member
+                if members:
+                    message["details"]["policy_member"] = members[0]
 
         # --- Summary ---
         parts = [principal or "unknown", method or "unknown"]
