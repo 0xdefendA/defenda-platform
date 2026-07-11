@@ -7,8 +7,8 @@ import json
 import base64
 import logging
 import requests
-from datetime import timedelta
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Any, Optional
 from fastapi import FastAPI, Request, HTTPException
 from google.cloud import bigquery, firestore, pubsub_v1
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.environ.get("PROJECT_ID", "local-dev")
 TOPIC_NAME = f"projects/{PROJECT_ID}/topics/defenda-alerta-evaluate"
+# The heartbeat goes through the NORMAL ingest path, not a side channel. That is
+# the whole point: it exercises pubsub -> ingestA -> BigQuery and lands in the
+# same events table the rules read. A deadman rule on it therefore tests the
+# entire chain end to end, not just "is alertA's process alive".
+INGEST_TOPIC = f"projects/{PROJECT_ID}/topics/defenda-event-ingest"
 
 # Initialize GCP clients
 try:
@@ -38,6 +43,78 @@ try:
     publisher = pubsub_v1.PublisherClient()
 except Exception as e:
     logger.warning(f"Could not initialize GCP clients (normal during build): {e}")
+
+
+def _json_default(obj: Any):
+    """JSON encoder for the types Firestore hands back that json.dumps cannot eat.
+
+    The one that bites: Firestore stores `expiration` as a native timestamp, and
+    doc.to_dict() returns it as DatetimeWithNanoseconds (a datetime subclass).
+    json.dumps has no encoder for it and raises TypeError. ISO strings round-trip
+    fine on the consumer side -- pydantic coerces them straight back to datetime,
+    and evaluator.is_expired() already accepts both shapes.
+    """
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, (bytes, bytearray)):
+        return base64.b64encode(obj).decode("ascii")
+    # Never let an unexpected Firestore type take down the whole cron (see
+    # _publish). A stringified field is a degraded payload; a TypeError here is a
+    # total detection outage.
+    return str(obj)
+
+
+def _publish(payload: dict) -> None:
+    publisher.publish(
+        TOPIC_NAME, json.dumps(payload, default=_json_default).encode("utf-8")
+    )
+
+
+def emit_heartbeat(published: int, failed: int, rules_loaded: int) -> None:
+    """Publish a cron heartbeat through the normal ingest path.
+
+    This is the deadman's canary. It travels alertA -> defenda-event-ingest ->
+    ingestA -> BigQuery, and lands in the same `events` table the rules query. A
+    deadman rule watching for its ABSENCE therefore covers the whole chain: if
+    Pub/Sub, ingestA, the BQ writer, or the scheduler breaks, the heartbeat stops
+    arriving and the deadman fires. A liveness ping that skipped the pipeline
+    would only prove alertA's process was running -- which is the least
+    interesting thing that can be true.
+
+    Known limit, stated plainly: this cannot catch alertA dying OUTRIGHT. If
+    /cron never runs, no heartbeat is emitted AND no rules are evaluated --
+    including this deadman. A watchdog cannot watch itself. That case is covered
+    outside the platform, by the Cloud Monitoring alert policy on 5xx and failed
+    scheduler jobs (cicd/modules/gcp_project_setup/monitoring.tf).
+
+    Best-effort by construction: a heartbeat failure must never be the thing that
+    breaks the cron it is reporting on.
+    """
+    try:
+        publisher.publish(
+            INGEST_TOPIC,
+            json.dumps(
+                {
+                    "source": "defenda_platform",
+                    "category": "deadman",
+                    "severity": "INFO",
+                    "summary": (
+                        f"alertA cron heartbeat: {published} published, "
+                        f"{failed} failed, {rules_loaded} rules loaded"
+                    ),
+                    "tags": ["heartbeat", "alerta"],
+                    "details": {
+                        "service": "alerta",
+                        "heartbeat": "cron",
+                        "published": published,
+                        "failed": failed,
+                        "rules_loaded": rules_loaded,
+                    },
+                }
+            ).encode("utf-8"),
+        )
+    except Exception as e:
+        logger.error(f"Failed to emit cron heartbeat: {e}")
 
 
 def load_rules():
@@ -85,22 +162,37 @@ async def handle_cron(request: Request):
     verify_push_token(request)
     rules = load_rules()
     published_count = 0
+    failed_count = 0
+
+    # Fan-out is per-item guarded on purpose. Before this, a single undeliverable
+    # document raised out of the loop and 500'd the whole /cron call -- so NO
+    # rules got evaluated at all, every minute, for as long as that one document
+    # existed. One malformed doc was a total detection outage, and a silent one:
+    # the only symptom was a 500 in the Cloud Run log.
+    #
+    # Fail per-item, keep the fan-out alive, and make the failure countable so a
+    # deadman rule can alert on it. Detection systems must degrade, not stop.
 
     # 1. Fan out base rules
     for rule in rules:
-        payload = {"type": "rule", "data": rule}
-        data_str = json.dumps(payload).encode("utf-8")
-        publisher.publish(TOPIC_NAME, data_str)
-        published_count += 1
+        try:
+            _publish({"type": "rule", "data": rule})
+            published_count += 1
+        except Exception as e:
+            failed_count += 1
+            logger.error(
+                f"Failed to publish rule {rule.get('alert_name', '<unnamed>')}: {e}"
+            )
 
     # 2. Fan out active inflight sequence alerts
     inflight_ref = fs_client.collection("inflight_alerts")
     for doc in inflight_ref.stream():
-        inflight_data = doc.to_dict()
-        payload = {"type": "inflight", "data": inflight_data}
-        data_str = json.dumps(payload).encode("utf-8")
-        publisher.publish(TOPIC_NAME, data_str)
-        published_count += 1
+        try:
+            _publish({"type": "inflight", "data": doc.to_dict()})
+            published_count += 1
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Failed to publish inflight alert {doc.id}: {e}")
 
     # 3. Housekeeping (Expire old inflight alerts). This enforces sequence
     # lifespans; guarded so a bad document can never fail the whole cron.
@@ -113,7 +205,23 @@ async def handle_cron(request: Request):
     except Exception as e:
         logger.error(f"Inflight housekeeping failed: {e}")
 
-    return {"status": "ok", "published": published_count}
+    # `failed` is deliberately surfaced rather than swallowed. A cron that
+    # publishes 0 of 12 rules should not look like a cron that published 12 --
+    # that is exactly the "pipeline health is a determinism problem" case the
+    # huntA plan reserves deadman rules for. Alert on failed > 0, and on
+    # published == 0.
+    if failed_count:
+        logger.error(
+            f"/cron fan-out degraded: {published_count} published, {failed_count} failed"
+        )
+
+    emit_heartbeat(published_count, failed_count, len(rules))
+
+    return {
+        "status": "ok" if not failed_count else "degraded",
+        "published": published_count,
+        "failed": failed_count,
+    }
 
 
 def is_event_processed(event_id: str) -> bool:

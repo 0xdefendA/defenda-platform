@@ -1,0 +1,39 @@
+---
+# The platform's own end-to-end canary.
+#
+# alertA emits a heartbeat every cron run, published to defenda-event-ingest --
+# the SAME topic every real event goes through. It travels
+# alertA -> Pub/Sub -> ingestA -> BigQuery and lands in the events table this
+# rule reads back. So the heartbeat's absence means a break ANYWHERE in that
+# chain: scheduler stopped, Pub/Sub broken, ingestA crashed or wedged, the BQ
+# writer failed, or the events table stopped accepting writes.
+#
+# This is the "pipeline health is inherently a determinism problem" rule from the
+# huntA plan. It is the one detection that must never depend on a hunt agent's
+# judgement.
+#
+# WHAT THIS CANNOT CATCH: alertA dying outright. If /cron never runs, no
+# heartbeat is emitted AND no rules are evaluated -- including this one. A
+# watchdog cannot watch itself. That case is covered OUTSIDE the platform by the
+# Cloud Monitoring policy in cicd/modules/gcp_project_setup/monitoring.tf
+# (5xx on alerta-service, failed Cloud Scheduler jobs). Both layers are required;
+# neither is sufficient.
+#
+# Tuning: cron runs every minute. A 15-minute window tolerates a few missed beats
+# plus BigQuery streaming-buffer lag, and still pages well before a shift change.
+# Too tight and late-arriving rows page you at 3am for nothing; too loose and the
+# pipeline is dead for an hour before anyone knows.
+alert_name: "deadman_ingest_pipeline"
+alert_type: "deadman"
+category: "deadman"
+criteria: "source='defenda_platform' AND JSON_VALUE(details.heartbeat) = 'cron'"
+lookback_minutes: 15
+threshold: 0
+severity: "CRITICAL"
+summary: "DEADMAN: no alertA heartbeat in 15m -- the ingest pipeline is broken and detections are not running"
+event_snippet: "last heartbeat: {{summary}}"
+event_sample_count: 1
+tags:
+  - "deadman"
+  - "pipeline"
+  - "self-monitoring"
