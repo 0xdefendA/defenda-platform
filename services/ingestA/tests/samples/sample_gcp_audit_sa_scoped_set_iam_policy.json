@@ -1,0 +1,72 @@
+{
+  "_comment": "huntA phase 2a. SetIAMPolicy scoped to a SERVICE ACCOUNT resource (iam.googleapis.com), which is what stratus gcp.persistence.backdoor-service-account-policy does. Modeled on stratus's own published detection sample, which shows the iam.googleapis.com SetIAMPolicy log DOES carry serviceData.policyDelta.bindingDeltas -- the same shape as project-level events, not a cloudresourcemanager-only shape as originally feared. So the plugin's existing extraction path should work here. The live detonation still confirms this against real telemetry; replace this file with the real captured payload once detonated.",
+  "logName": "projects/sacrificial-project/logs/cloudaudit.googleapis.com%2Factivity",
+  "insertId": "-sa-scoped-123",
+  "severity": "NOTICE",
+  "timestamp": "2026-07-11T18:05:11.123456Z",
+  "receiveTimestamp": "2026-07-11T18:05:12.001122Z",
+  "resource": {
+    "type": "service_account",
+    "labels": {
+      "project_id": "sacrificial-project",
+      "email_id": "victim-sa@sacrificial-project.iam.gserviceaccount.com"
+    }
+  },
+  "protoPayload": {
+    "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+    "authenticationInfo": {
+      "principalEmail": "hunta-canary@sacrificial-project.iam.gserviceaccount.com"
+    },
+    "requestMetadata": {
+      "callerIp": "203.0.113.50",
+      "callerSuppliedUserAgent": "google-cloud-sdk gcloud/478.0.0"
+    },
+    "serviceName": "iam.googleapis.com",
+    "methodName": "google.iam.admin.v1.SetIAMPolicy",
+    "resourceName": "projects/-/serviceAccounts/109876543210987654321",
+    "authorizationInfo": [
+      {
+        "resource": "projects/-/serviceAccounts/109876543210987654321",
+        "permission": "iam.serviceAccounts.setIamPolicy",
+        "granted": true
+      }
+    ],
+    "serviceData": {
+      "@type": "type.googleapis.com/google.iam.v1.logging.AuditData",
+      "policyDelta": {
+        "bindingDeltas": [
+          {
+            "action": "ADD",
+            "role": "roles/iam.serviceAccountTokenCreator",
+            "member": "user:external-evil@gmail.com"
+          }
+        ]
+      }
+    },
+    "request": {
+      "@type": "type.googleapis.com/google.iam.v1.SetIamPolicyRequest",
+      "resource": "projects/-/serviceAccounts/victim-sa@sacrificial-project.iam.gserviceaccount.com",
+      "policy": {
+        "bindings": [
+          {
+            "role": "roles/iam.serviceAccountTokenCreator",
+            "members": [
+              "user:external-evil@gmail.com"
+            ]
+          }
+        ]
+      }
+    },
+    "response": {
+      "@type": "type.googleapis.com/google.iam.v1.Policy",
+      "bindings": [
+        {
+          "role": "roles/iam.serviceAccountTokenCreator",
+          "members": [
+            "user:external-evil@gmail.com"
+          ]
+        }
+      ]
+    }
+  }
+}

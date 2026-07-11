@@ -1,0 +1,56 @@
+{
+  "_comment": "Shape of a SetIamPolicy that changes MORE THAN ONE binding in a single call. Real attacker behavior and what stratus gcp.persistence.create-admin-service-account produces (create SA, then grant it a role while other deltas ride along). The plugin currently reads bindingDeltas[0] only, so everything past the first delta is silently dropped. huntA phase 2a.",
+  "logName": "projects/sacrificial-project/logs/cloudaudit.googleapis.com%2Factivity",
+  "insertId": "-multi123",
+  "severity": "NOTICE",
+  "timestamp": "2026-07-11T18:02:44.123456Z",
+  "receiveTimestamp": "2026-07-11T18:02:45.001122Z",
+  "resource": {
+    "type": "project",
+    "labels": {
+      "project_id": "sacrificial-project"
+    }
+  },
+  "protoPayload": {
+    "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+    "authenticationInfo": {
+      "principalEmail": "hunta-canary@sacrificial-project.iam.gserviceaccount.com"
+    },
+    "requestMetadata": {
+      "callerIp": "203.0.113.50",
+      "callerSuppliedUserAgent": "google-cloud-sdk gcloud/478.0.0"
+    },
+    "serviceName": "cloudresourcemanager.googleapis.com",
+    "methodName": "SetIamPolicy",
+    "resourceName": "projects/sacrificial-project",
+    "authorizationInfo": [
+      {
+        "resource": "projects/sacrificial-project",
+        "permission": "resourcemanager.projects.setIamPolicy",
+        "granted": true
+      }
+    ],
+    "serviceData": {
+      "@type": "type.googleapis.com/google.iam.v1.logging.AuditData",
+      "policyDelta": {
+        "bindingDeltas": [
+          {
+            "action": "ADD",
+            "role": "roles/viewer",
+            "member": "serviceAccount:benign-app@sacrificial-project.iam.gserviceaccount.com"
+          },
+          {
+            "action": "ADD",
+            "role": "roles/owner",
+            "member": "serviceAccount:stratus-backdoor@sacrificial-project.iam.gserviceaccount.com"
+          },
+          {
+            "action": "ADD",
+            "role": "roles/editor",
+            "member": "user:external-evil@gmail.com"
+          }
+        ]
+      }
+    }
+  }
+}
