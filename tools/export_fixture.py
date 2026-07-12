@@ -104,8 +104,22 @@ def main() -> int:
         "broke, etc). Recorded in the manifest as untested coverage. Do NOT put them "
         "in --techniques. See the note below on why this flag exists.",
     )
+    p.add_argument(
+        "--operators",
+        default="",
+        help="Comma-separated identities that RAN the campaign (you, CI deployer), "
+        "e.g. 'user@example.com,github-deployer@proj.iam.gserviceaccount.com'. "
+        "Recorded as a THIRD bucket between attack and benign. These identities "
+        "generate setup noise (impersonating the canary, creating keys) that a "
+        "hunter may reasonably flag -- so the scorer treats flagging them as a "
+        "don't-care, neither a hit nor a false positive. Without this list the "
+        "scorer must assume everything-not-canary is benign, which punishes the "
+        "agent for correct reasoning about your own setup traffic.",
+    )
     p.add_argument("--notes", default="", help="Anything an eval reader needs to know")
     args = p.parse_args()
+
+    operators = [o.strip() for o in args.operators.split(",") if o.strip()]
 
     client = bigquery.Client(project=args.project)
     events = fetch_window(client, args.project, args.since, args.until)
@@ -118,8 +132,17 @@ def main() -> int:
             "eval suite."
         )
 
+    operator_set = set(operators)
     attack = [e for e in events if e.get("identity") == args.canary]
-    background = [e for e in events if e.get("identity") != args.canary]
+    operator = [
+        e for e in events
+        if e.get("identity") != args.canary and e.get("identity") in operator_set
+    ]
+    # Benign = everything that is neither the canary nor a declared operator.
+    background = [
+        e for e in events
+        if e.get("identity") != args.canary and e.get("identity") not in operator_set
+    ]
 
     if not attack:
         sys.exit(
@@ -137,11 +160,17 @@ def main() -> int:
             f.write(json.dumps(e, default=str) + "\n")
 
     ground_truth = {
-        "label_basis": "canary identity attribution",
+        "label_basis": "canary identity attribution; operators declared explicitly",
         "canary_identity": args.canary,
         "attack_event_ids": [e["eventid"] for e in attack],
         "attack_event_count": len(attack),
-        "background_event_count": len(background),
+        # The operator bucket -- setup noise a hunter may reasonably flag. Scored
+        # as don't-care: neither required nor penalised. See the scorer.
+        "operator_identities": operators,
+        "operator_event_ids": [e["eventid"] for e in operator],
+        "operator_event_count": len(operator),
+        # Benign = everything else. Flagging one of THESE is a real false positive.
+        "benign_event_count": len(background),
         "techniques_detonated": [t.strip() for t in args.techniques.split(",")],
     }
     (out / "ground_truth.json").write_text(json.dumps(ground_truth, indent=2) + "\n")
@@ -156,7 +185,8 @@ def main() -> int:
         "counts": {
             "total": len(events),
             "attack": len(attack),
-            "background": len(background),
+            "operator": len(operator),
+            "benign": len(background),
             "distinct_identities": len({e.get("identity") for e in events}),
             "sources": sorted({e.get("source") for e in events if e.get("source")}),
         },
@@ -184,9 +214,19 @@ def main() -> int:
 
     print(f"fixture written: fixtures/{args.name}/")
     print(f"  events.jsonl       {len(events)} events "
-          f"({len(attack)} attack / {len(background)} background)")
-    print(f"  ground_truth.json  {len(ground_truth['attack_event_ids'])} labeled attack events")
+          f"({len(attack)} attack / {len(operator)} operator / {len(background)} benign)")
+    print(f"  ground_truth.json  {len(ground_truth['attack_event_ids'])} attack, "
+          f"{len(operator)} operator labeled")
     print(f"  manifest.json      sources: {', '.join(manifest['counts']['sources'])}")
+
+    if not operators:
+        print(
+            "\n  NOTE: no --operators declared. Any campaign-setup traffic (you "
+            "impersonating\n  the canary, CI activity) will score as BENIGN, so the "
+            "agent gets a false\n  positive for reasonably flagging your own noise. "
+            "Pass --operators unless the\n  window is genuinely free of operator "
+            "activity."
+        )
 
     if manifest["untested_techniques"]:
         print(
