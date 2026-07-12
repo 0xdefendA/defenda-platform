@@ -1,25 +1,66 @@
 import os
+import re
 
 from utils.dotdict import DotDict
 
 
-# Services whose READ traffic from our own platform SAs is pure self-noise:
-# the platform querying its own lake / state. Deliberately NOT iamcredentials
-# (impersonation is crown-jewel signal) or any control-plane service.
-SELF_READ_SERVICES = (
-    "bigquery.googleapis.com",
-    "firestore.googleapis.com",
-    "datastore.googleapis.com",
+FIRESTORE_SERVICES = ("firestore.googleapis.com", "datastore.googleapis.com")
+
+# Google-managed service agent that evaluates Firestore security rules for our web
+# clients. Its data_access events ARE the respondA UI being used by a human -- the
+# noisiest of which is presence (folks moving around alerts sets a presence doc).
+FIREBASE_RULES_AGENT_SUFFIX = "@firebase-rules.iam.gserviceaccount.com"
+
+# Firestore collections whose document CRUD is SECURITY-MEANINGFUL and must be
+# kept: detection rules, platform settings/config, and the alerts themselves
+# ("who changed this alert"). Everything else our own identities do at the
+# document level (presence, dedup markers, inflight sequence churn) is operational
+# noise and is dropped. Overridable via env for tuning without a code change.
+#
+# NOTE: structural changes -- creating a database, deploying security rules -- are
+# Admin Activity, a different audit_log_type this plugin never sees, so they are
+# kept automatically regardless of this list.
+FIRESTORE_KEEP_COLLECTIONS = tuple(
+    c.strip()
+    for c in os.environ.get(
+        "FIRESTORE_AUDIT_COLLECTIONS", "rules,settings,alerts"
+    ).split(",")
+    if c.strip()
 )
 
-# Firestore / Datastore READ method leaves. Writes (commit, batchwrite) are NOT
-# here -- a compromised SA writing/deleting must stay visible.
-DATASTORE_READ_METHODS = (
-    "lookup",
-    "runquery",
-    "runaggregationquery",
-    "batchget",
-    "listen",
+# Pull the collection out of a Firestore document resource path
+# (.../documents/<collection>/<docid>).
+_DOC_COLLECTION_RE = re.compile(r"/documents/([^/]+)/")
+
+# BigQuery methods that can ONLY read -- safe to drop UNCONDITIONALLY, because they
+# cannot mutate data or write to a new table. Each query the platform runs emits
+# several of these (InsertJob to submit, GetQueryResults to fetch, GetJob to poll),
+# so catching only InsertJob leaves most of the loop intact -- that was the bug.
+# Matched on the method leaf, covering old-style ("jobservice.getqueryresults") and
+# new-style ("google.cloud.bigquery.v2.JobService.GetQueryResults") naming alike.
+BQ_READ_ONLY_LEAVES = (
+    "getqueryresults",
+    "getjob",
+    "listjobs",
+    "get",   # datasetService.get, tableService.get -- metadata reads
+    "list",  # *.list -- datasets/tables/tabledata/jobs, all reads
+    "getqueryschema",
+)
+
+# A BigQuery query emits SEVERAL data_access events across its lifecycle
+# (InsertJob, JobCompleted, GetQueryResults), and each carries the statementType at
+# a DIFFERENT payload path depending on the audit format (new BigQueryAuditMetadata
+# vs old AuditData). Rather than enumerate methods, we read the statement type from
+# wherever it lives and classify on THAT: SELECT is a read; CREATE_TABLE_AS_SELECT /
+# INSERT / UPDATE / DELETE / MERGE / EXPORT are writes and are kept. This is robust
+# to method-name variety and keeps exfil/tampering visible by construction.
+BQ_STATEMENT_TYPE_PATHS = (
+    # new-style, JobService.InsertJob
+    "details.protopayload.metadata.jobchange.job.jobconfig.queryconfig.statementtype",
+    # old-style, jobservice.jobcompleted
+    "details.protopayload.servicedata.jobcompletedevent.job.jobconfiguration.query.statementtype",
+    # old-style, jobservice.getqueryresults
+    "details.protopayload.servicedata.jobgetqueryresultsresponse.job.jobconfiguration.query.statementtype",
 )
 
 
@@ -37,18 +78,30 @@ class message(object):
         solves for drowning real signal, and making the platform's own plumbing look like
         activity worth hunting.
 
-        SCOPE (deliberately surgical):
-        drop ONLY when ALL hold:
-          * it is a data_access event,
-          * from a service account in OUR OWN platform project,
-          * on BigQuery / Firestore / Datastore,
-          * and it is a READ (a BigQuery SELECT, or a datastore read method).
+        SCOPE (deliberately surgical), two shapes of self-noise:
 
-        KEPT (never dropped), so a compromised platform SA is not invisible:
-          * writes, exports, CTAS, MERGE, DELETE -- potential exfil / tampering,
+        BigQuery -- our own platform SA reading our own lake:
+          drop READS (SELECT queries, result/metadata reads: GetQueryResults,
+          GetJob, get/list). KEEP writes/exports/CTAS/DML -- a compromised SA
+          exfiltrating or tampering stays visible. (Accepted trade: that SA's
+          plain reads and metadata recon of our own project go unlogged.)
+
+        Firestore / Datastore -- our own identities' document CRUD as the platform
+        is USED (platform SAs, and the firebase-rules web agent = the respondA UI
+        driven by a human):
+          drop READS AND WRITES of OPERATIONAL collections (presence 'users',
+          'processed_events', inflight churn -- high volume, no security value).
+          KEEP the security-meaningful collections (rules, settings, alerts) so
+          config and alert-handling stay audited.
+
+        KEPT (never dropped) across the board:
+          * BigQuery writes/exports/DML,
           * anything on iamcredentials, IAM, or any other service,
-          * any Admin Activity event,
-          * data_access by any NON-platform identity (the actual hunt signal).
+          * ANY Admin Activity event -- so creating a database or deploying
+            security rules is always kept (different audit_log_type; never seen
+            here),
+          * Firestore CRUD on the keep-list collections,
+          * data_access by any NON-self identity (the actual hunt signal).
 
         Fail-safe: if anything is uncertain, KEEP the event. We drop only what we
         are sure is our own routine self-read.
@@ -75,28 +128,80 @@ class message(object):
             return False
         return principal.endswith(self._self_sa_suffix)
 
-    def _is_self_read(self, dot, service: str, method: str) -> bool:
-        method = method.lower()
+    def _is_self_identity(self, principal: str) -> bool:
+        """'Us' for Firestore purposes: our own platform SAs, plus the
+        firebase-rules web agent (our UI being used by an authenticated human).
+        Anything else touching Firestore -- a stray user or SA with direct
+        datastore IAM -- is NOT us, and is kept as signal."""
+        return self._is_platform_sa(principal) or principal.endswith(
+            FIREBASE_RULES_AGENT_SUFFIX
+        )
 
+    def _firestore_collection(self, dot) -> str:
+        """Best-effort collection name from the document path(s) in the event.
+        '' if undeterminable -> caller fail-safe KEEPs."""
+        candidates = []
+
+        keys = dot.get("details.protopayload.metadata.keys", []) or []
+        if isinstance(keys, list):
+            candidates += [k for k in keys if isinstance(k, str)]
+
+        listen = (
+            dot.get("details.protopayload.request.addtarget.documents.documents", [])
+            or []
+        )
+        if isinstance(listen, list):
+            candidates += [d for d in listen if isinstance(d, str)]
+
+        writes = dot.get("details.protopayload.request.writes", []) or []
+        if isinstance(writes, list):
+            for w in writes:
+                if isinstance(w, dict):
+                    name = (w.get("update", {}) or {}).get("name") or w.get("delete")
+                    if isinstance(name, str):
+                        candidates.append(name)
+
+        for c in candidates:
+            m = _DOC_COLLECTION_RE.search(c)
+            if m:
+                return m.group(1)
+        return ""
+
+    def _bq_statement_type(self, dot) -> str:
+        """The query's statementType, from whichever lifecycle path carries it.
+        Empty string if none present (an unknowable => fail-safe keep)."""
+        for path in BQ_STATEMENT_TYPE_PATHS:
+            stype = str(dot.get(path, "") or "").upper()
+            if stype:
+                return stype
+        return ""
+
+    def _should_drop(self, dot, principal: str, service: str, method: str) -> bool:
+        # --- BigQuery: our own SA reading our own lake ------------------------
+        # Reads are noise; writes (CTAS/DML/EXPORT) stay visible as exfil signal.
         if service == "bigquery.googleapis.com":
-            # A read query is InsertJob with statementType SELECT. Anything else
-            # (CREATE_TABLE_AS_SELECT, MERGE, INSERT, UPDATE, DELETE, EXPORT, or a
-            # missing/other statement type) is NOT dropped -- it could be exfil or
-            # tampering.
-            if "insertjob" not in method:
+            if not self._is_platform_sa(principal):
                 return False
-            stype = str(
-                dot.get(
-                    "details.protopayload.metadata.jobchange.job."
-                    "jobconfig.queryconfig.statementtype",
-                    "",
-                )
-            ).upper()
-            return stype == "SELECT"
+            leaf = method.lower().rsplit(".", 1)[-1]
+            if leaf in BQ_READ_ONLY_LEAVES:
+                return True
+            # Classify on statement type wherever it appears. Only a plain SELECT
+            # is a read; anything else (or none found) is kept (fail-safe).
+            return self._bq_statement_type(dot) == "SELECT"
 
-        if service in ("firestore.googleapis.com", "datastore.googleapis.com"):
-            leaf = method.rsplit(".", 1)[-1]
-            return leaf in DATASTORE_READ_METHODS
+        # --- Firestore / Datastore: document-level CRUD by us ----------------
+        # Both READS and WRITES of operational collections (presence, dedup
+        # markers, inflight churn) are noise as the platform is used. Keep the
+        # security-meaningful collections (rules/settings/alerts). Structural
+        # changes -- create database, deploy security rules -- are Admin Activity
+        # and never reach this plugin, so they are kept regardless.
+        if service in FIRESTORE_SERVICES:
+            if not self._is_self_identity(principal):
+                return False  # external accessor => keep as signal
+            collection = self._firestore_collection(dot)
+            if not collection:
+                return False  # cannot classify => fail-safe KEEP
+            return collection not in FIRESTORE_KEEP_COLLECTIONS
 
         return False
 
@@ -112,11 +217,7 @@ class message(object):
         service = str(dot.get("details.servicename", ""))
         method = str(dot.get("details.methodname", ""))
 
-        if (
-            service in SELF_READ_SERVICES
-            and self._is_platform_sa(principal)
-            and self._is_self_read(dot, service, method)
-        ):
+        if self._should_drop(dot, principal, service, method):
             # None signals the plugin runner to drop the event (see
             # utils/plugins.send_event_to_plugins and main.py's short-circuit).
             return (None, metadata)

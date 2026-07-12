@@ -48,7 +48,35 @@ def bq_event(principal, statement_type, method="google.cloud.bigquery.v2.JobServ
     }
 
 
-def fs_event(principal, method, service="firestore.googleapis.com"):
+def bq_completed_event(principal, statement_type):
+    """Old-style jobservice.jobcompleted: statementType lives under
+    servicedata.jobCompletedEvent, a DIFFERENT path than InsertJob."""
+    return {
+        "logName": DATA_ACCESS_LOG,
+        "resource": {"type": "bigquery_resource", "labels": {"project_id": "prj-defenda-platform-adf"}},
+        "protoPayload": {
+            "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+            "authenticationInfo": {"principalEmail": principal},
+            "serviceName": "bigquery.googleapis.com",
+            "methodName": "jobservice.jobcompleted",
+            "serviceData": {
+                "@type": "type.googleapis.com/google.cloud.bigquery.logging.v1.AuditData",
+                "jobCompletedEvent": {
+                    "eventName": "query_job_completed",
+                    "job": {"jobConfiguration": {"query": {"statementType": statement_type}}},
+                },
+            },
+        },
+    }
+
+
+FIREBASE_RULES_AGENT = "service-56013939588@firebase-rules.iam.gserviceaccount.com"
+
+
+def fs_event(principal, method, collection="users", service="firestore.googleapis.com"):
+    """A Firestore data_access event whose document path names a collection.
+    metadata.keys is where reads (Listen/Lookup) carry the doc path."""
+    doc = f"projects/prj-defenda-platform-adf/databases/(default)/documents/{collection}/docid123"
     return {
         "logName": DATA_ACCESS_LOG,
         "protoPayload": {
@@ -56,6 +84,25 @@ def fs_event(principal, method, service="firestore.googleapis.com"):
             "authenticationInfo": {"principalEmail": principal},
             "serviceName": service,
             "methodName": method,
+            "metadata": {
+                "@type": "type.googleapis.com/google.cloud.audit.DatastoreServiceData",
+                "keys": [doc],
+            },
+        },
+    }
+
+
+def fs_write_event(principal, collection):
+    """A Firestore write (Commit) whose doc path lives under request.writes."""
+    doc = f"projects/prj-defenda-platform-adf/databases/(default)/documents/{collection}/docid123"
+    return {
+        "logName": DATA_ACCESS_LOG,
+        "protoPayload": {
+            "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+            "authenticationInfo": {"principalEmail": principal},
+            "serviceName": "firestore.googleapis.com",
+            "methodName": "google.firestore.v1.Firestore.Commit",
+            "request": {"writes": [{"update": {"name": doc}}]},
         },
     }
 
@@ -68,9 +115,77 @@ def test_platform_sa_bigquery_select_is_dropped():
     assert _normalize(bq_event(SELF, "SELECT")) is None
 
 
-def test_platform_sa_firestore_read_is_dropped():
-    assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.RunQuery")) is None
-    assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup")) is None
+def test_web_ui_presence_listen_is_dropped():
+    """The exact event from the report: the firebase-rules web agent opening a
+    realtime Listen on a users/ presence doc as a human moves around the UI. Pure
+    plumbing, high volume, no security value."""
+    assert _normalize(fs_event(FIREBASE_RULES_AGENT, "google.firestore.v1.Firestore.Listen", collection="users")) is None
+
+
+def test_platform_sa_operational_collection_crud_is_dropped():
+    """Platform SAs churning internal bookkeeping collections -- reads AND writes."""
+    assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection="processed_events")) is None
+    assert _normalize(fs_write_event(SELF, "inflight_alerts")) is None
+    assert _normalize(fs_write_event(SELF, "processed_events")) is None
+
+
+def test_security_meaningful_collections_are_kept():
+    """rules / settings / alerts CRUD is config + audit trail -- keep read AND
+    write, even from our own identities."""
+    for coll in ("rules", "settings", "alerts"):
+        assert _normalize(fs_write_event(SELF, coll)) is not None, f"write {coll}"
+        assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection=coll)) is not None, f"read {coll}"
+
+
+def test_external_identity_firestore_is_kept():
+    """An identity that is neither a platform SA nor the web agent touching
+    Firestore -- e.g. a compromised SA with direct datastore IAM -- is signal,
+    kept regardless of collection."""
+    assert _normalize(fs_event(OUTSIDER, "google.firestore.v1.Firestore.Lookup", collection="users")) is not None
+
+
+def test_undeterminable_collection_is_kept():
+    """Fail-safe: if we cannot parse a collection from the doc path, keep it rather
+    than drop something we cannot classify."""
+    e = fs_event(SELF, "google.firestore.v1.Firestore.Lookup")
+    e["protoPayload"].pop("metadata", None)  # remove the only doc-path source
+    assert _normalize(e) is not None
+
+
+def test_platform_sa_bigquery_getqueryresults_is_dropped():
+    """The SECOND half of every query loop: fetching results. It carries no
+    statementType at the InsertJob path but physically cannot write, so it is a
+    read regardless. Missing this left half the self-telemetry flowing."""
+    e = bq_event(SELF, "SELECT", method="jobservice.getqueryresults")
+    # getqueryresults has no jobChange.statementType -- prove we drop it anyway.
+    del e["protoPayload"]["metadata"]
+    assert _normalize(e) is None
+
+
+def test_platform_sa_bigquery_jobcompleted_select_is_dropped():
+    """jobservice.jobcompleted carries statementType at a different payload path
+    than InsertJob. The statement-type-anywhere classifier must find it."""
+    assert _normalize(bq_completed_event(SELF, "SELECT")) is None
+
+
+def test_platform_sa_bigquery_jobcompleted_write_is_kept():
+    """A write job's completion event (CTAS / EXPORT) must stay visible -- this is
+    where you'd see a compromised SA exfiltrating to a new table."""
+    for stype in ("CREATE_TABLE_AS_SELECT", "EXPORT", "INSERT", "DELETE"):
+        assert _normalize(bq_completed_event(SELF, stype)) is not None, stype
+
+
+def test_platform_sa_bigquery_pure_reads_are_dropped():
+    """Result/metadata read methods drop unconditionally, old- and new-style names."""
+    for method in (
+        "jobservice.getjob",
+        "tabledataservice.list",
+        "google.cloud.bigquery.v2.JobService.GetQueryResults",
+        "google.cloud.bigquery.v2.TableDataService.List",
+    ):
+        e = bq_event(SELF, "SELECT", method=method)
+        e["protoPayload"].pop("metadata", None)
+        assert _normalize(e) is None, method
 
 
 # --- KEEP: everything that could ever matter -----------------------------------
@@ -90,10 +205,12 @@ def test_platform_sa_bigquery_write_is_kept():
         assert _normalize(bq_event(SELF, stype)) is not None, stype
 
 
-def test_platform_sa_firestore_write_is_kept():
-    """Commit / BatchWrite are writes -- tampering or state manipulation stays visible."""
-    assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Commit")) is not None
-    assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.BatchWrite")) is not None
+# NOTE: Firestore writes are no longer unconditionally kept. Per the collection
+# policy, writes to OPERATIONAL collections drop (see
+# test_platform_sa_operational_collection_crud_is_dropped) while writes to the
+# security-meaningful keep-list survive (test_security_meaningful_collections_are_kept).
+# Structural changes (create database, deploy rules) are Admin Activity and never
+# reach this plugin at all.
 
 
 def test_platform_sa_other_service_is_kept():
