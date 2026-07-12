@@ -154,9 +154,11 @@ def test_web_ui_collection_query_listen_is_dropped():
     assert _normalize(fs_query_listen_event(FIREBASE_RULES_AGENT, "processed_events")) is None
 
 
-def test_query_listen_on_keep_collection_is_kept():
-    """A collection-query subscription to a keep-list collection stays."""
-    assert _normalize(fs_query_listen_event(FIREBASE_RULES_AGENT, "rules")) is not None
+def test_query_listen_on_config_collection_is_dropped():
+    """VIEWING config (the UI subscribing to the rules collection to render the
+    rules page) is a READ -- normal platform use, dropped. Only config CHANGES
+    (writes) are kept. This is the exact rules-Listen event that slipped through."""
+    assert _normalize(fs_query_listen_event(FIREBASE_RULES_AGENT, "rules")) is None
 
 
 def test_platform_sa_operational_collection_crud_is_dropped():
@@ -166,12 +168,13 @@ def test_platform_sa_operational_collection_crud_is_dropped():
     assert _normalize(fs_write_event(SELF, "processed_events")) is None
 
 
-def test_config_collections_are_kept():
-    """Only CONFIG collections (rules, settings) are kept -- changes to how the
-    platform is configured. Keep read AND write."""
+def test_config_change_is_kept_but_config_view_is_dropped():
+    """The finest line: a WRITE to a config collection (editing a rule/setting) is
+    a config change -> keep. A READ of the same collection (viewing the rules page)
+    is normal use -> drop."""
     for coll in ("rules", "settings"):
-        assert _normalize(fs_write_event(SELF, coll)) is not None, f"write {coll}"
-        assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection=coll)) is not None, f"read {coll}"
+        assert _normalize(fs_write_event(SELF, coll)) is not None, f"config write {coll}"
+        assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection=coll)) is None, f"config read {coll}"
 
 
 def test_platform_record_crud_is_dropped():
@@ -195,6 +198,27 @@ def test_undeterminable_collection_is_kept():
     e = fs_event(SELF, "google.firestore.v1.Firestore.Lookup")
     e["protoPayload"].pop("metadata", None)  # remove the only doc-path source
     assert _normalize(e) is not None
+
+
+def test_bigquery_insertjob_jobinsertion_select_is_dropped():
+    """InsertJob emits a 'first' (jobInsertion) AND a 'last' (jobChange) event;
+    the statement type lives under a different metadata key in each. querya-sa's
+    SELECT arrived as jobInsertion and slipped through when only jobChange was
+    checked."""
+    e = {
+        "logName": DATA_ACCESS_LOG,
+        "protoPayload": {
+            "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+            "authenticationInfo": {"principalEmail": "querya-sa@prj-defenda-platform-adf.iam.gserviceaccount.com"},
+            "serviceName": "bigquery.googleapis.com",
+            "methodName": "google.cloud.bigquery.v2.JobService.InsertJob",
+            "metadata": {
+                "@type": "type.googleapis.com/google.cloud.audit.BigQueryAuditMetadata",
+                "jobInsertion": {"job": {"jobConfig": {"queryConfig": {"statementType": "SELECT"}}}, "reason": "JOB_INSERT_REQUEST"},
+            },
+        },
+    }
+    assert _normalize(e) is None
 
 
 def test_platform_sa_bigquery_getqueryresults_is_dropped():

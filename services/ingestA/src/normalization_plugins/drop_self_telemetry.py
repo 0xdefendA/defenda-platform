@@ -11,24 +11,27 @@ FIRESTORE_SERVICES = ("firestore.googleapis.com", "datastore.googleapis.com")
 # noisiest of which is presence (folks moving around alerts sets a presence doc).
 FIREBASE_RULES_AGENT_SUFFIX = "@firebase-rules.iam.gserviceaccount.com"
 
-# Firestore collections whose document CRUD is CONFIGURATION and must be kept:
-# detection rules and platform settings. Everything else our own identities do at
-# the document level is NORMAL PLATFORM USAGE -- viewing and updating alerts,
-# incidents, events; presence; dedup markers; inflight churn -- and is dropped.
-# We do not audit people using the platform; we audit changes to how it is
-# configured. Overridable via env for tuning without a code change.
+# Firestore collections that hold CONFIGURATION (detection rules, platform
+# settings). We keep WRITES to these -- a config CHANGE -- and drop READS of them
+# (viewing the rules page is just using the platform). Every other collection drops
+# both reads and writes. Overridable via env for tuning without a code change.
 #
 # NOTE: the non-normal things worth logging -- deleting a database, changing
 # security rules, IAM -- are Admin Activity, a different audit_log_type this plugin
 # never sees, so they are kept automatically regardless of this list. This list is
 # only for CONFIG that happens to be stored as Firestore documents.
-FIRESTORE_KEEP_COLLECTIONS = tuple(
+FIRESTORE_CONFIG_COLLECTIONS = tuple(
     c.strip()
     for c in os.environ.get(
         "FIRESTORE_AUDIT_COLLECTIONS", "rules,settings"
     ).split(",")
     if c.strip()
 )
+
+# Firestore/Datastore write method leaves. A write to a config collection is the
+# only Firestore data_access we keep; everything else (all reads, and writes to
+# non-config collections) is normal platform use and drops.
+FIRESTORE_WRITE_METHODS = ("commit", "batchwrite", "write")
 
 # Pull the collection out of a Firestore document resource path
 # (.../documents/<collection>/<docid>).
@@ -57,7 +60,9 @@ BQ_READ_ONLY_LEAVES = (
 # INSERT / UPDATE / DELETE / MERGE / EXPORT are writes and are kept. This is robust
 # to method-name variety and keeps exfil/tampering visible by construction.
 BQ_STATEMENT_TYPE_PATHS = (
-    # new-style, JobService.InsertJob
+    # new-style InsertJob emits TWO events: a "first" (jobInsertion) and a "last"
+    # (jobChange). Both carry the statement type, at different keys.
+    "details.protopayload.metadata.jobinsertion.job.jobconfig.queryconfig.statementtype",
     "details.protopayload.metadata.jobchange.job.jobconfig.queryconfig.statementtype",
     # old-style, jobservice.jobcompleted
     "details.protopayload.servicedata.jobcompletedevent.job.jobconfiguration.query.statementtype",
@@ -211,19 +216,25 @@ class message(object):
             # is a read; anything else (or none found) is kept (fail-safe).
             return self._bq_statement_type(dot) == "SELECT"
 
-        # --- Firestore / Datastore: document-level CRUD by us ----------------
-        # Both READS and WRITES of operational collections (presence, dedup
-        # markers, inflight churn) are noise as the platform is used. Keep the
-        # security-meaningful collections (rules/settings/alerts). Structural
-        # changes -- create database, deploy security rules -- are Admin Activity
-        # and never reach this plugin, so they are kept regardless.
+        # --- Firestore / Datastore: our own use of the platform ---------------
+        # We audit CONFIG CHANGES, not platform usage. The only thing kept is a
+        # WRITE to a config collection (editing a rule / setting). Everything else
+        # -- reads of anything (viewing the rules page, listing alerts), and writes
+        # to non-config collections (alert status, presence, dedup) -- is normal
+        # usage and drops. Structural changes (create/delete database, security
+        # rules, IAM) are Admin Activity and never reach this plugin.
         if service in FIRESTORE_SERVICES:
             if not self._is_self_identity(principal):
                 return False  # external accessor => keep as signal
             collection = self._firestore_collection(dot)
             if not collection:
                 return False  # cannot classify => fail-safe KEEP
-            return collection not in FIRESTORE_KEEP_COLLECTIONS
+            leaf = method.lower().rsplit(".", 1)[-1]
+            is_config = collection in FIRESTORE_CONFIG_COLLECTIONS
+            is_write = leaf in FIRESTORE_WRITE_METHODS
+            if is_config and is_write:
+                return False  # a config CHANGE => keep
+            return True  # config views + all non-config usage => drop
 
         return False
 
