@@ -310,10 +310,40 @@ cannot argue convincingly that something is not routine, it probably is routine,
 and it does not belong in the report.
 
 Call write_report exactly once when you are done.
-
+{skill_block}
 ## Schema catalog
 
 {catalog}
+"""
+
+# Injected only when --skill is passed. The SOP is guidance distilled from prior
+# hunts -- a strong prior on strategy and judgment, NOT a script to execute
+# verbatim and NOT a substitute for reading the actual data. A skill that made the
+# agent stop thinking would be worse than none.
+def strip_frontmatter(md: str) -> str:
+    """Return the markdown body, dropping a leading YAML frontmatter block.
+
+    Frontmatter is provenance/eval/scheduling metadata for humans and the
+    orchestrator -- it names techniques and answer-key hints an agent must never
+    see (see the injection site). If a file has no frontmatter, return it whole.
+    """
+    if md.lstrip().startswith("---"):
+        # split on the fence: ['', frontmatter, body...]
+        parts = md.split("---", 2)
+        if len(parts) == 3:
+            return parts[2].lstrip("\n")
+    return md
+
+
+SKILL_BLOCK = """
+## Your standard operating procedure for this hunt
+
+The following SOP was written from prior successful hunts of this kind. Treat it
+as an experienced colleague's guidance: follow its strategy and apply its judgment
+criteria, but ADAPT to what you actually find. If the data contradicts the SOP,
+trust the data and say so -- that disagreement is how the SOP improves.
+
+{skill}
 """
 
 
@@ -329,9 +359,31 @@ async def main() -> int:
         help="Vertex Gemini model id. Default gemini-3.1-pro-preview; gemini-3.5-flash is "
         "the cheaper option to test once the task is proven.",
     )
+    p.add_argument(
+        "--skill",
+        default=None,
+        help="Path to a SKILL.md to run WITH (seed loop step 4+). Omit for a "
+        "skill-less run (step 3). The transcript of a skill-run is what feeds the "
+        "next revision; a quiet-window skill-run is how you find over-firing.",
+    )
     args = p.parse_args()
 
     h = Harness(args.project, args.run_id, args.since, args.until)
+
+    if args.skill:
+        # Inject the BODY only, never the YAML frontmatter. The frontmatter is
+        # metadata ABOUT the skill -- provenance, eval scores, authoring notes --
+        # for the orchestrator and human reviewers. It routinely names the exact
+        # techniques the skill was evaluated against and the shortcuts that were
+        # deliberately stripped ("don't key on SAs named stratus-red-team"). Handing
+        # that to an agent about to hunt a window that CONTAINS those artifacts is a
+        # direct leak: it turns "learn the method" into "here is the answer key."
+        # The body carries the method and judgment and nothing that names the test.
+        skill_body = strip_frontmatter(Path(args.skill).read_text())
+        skill_block = SKILL_BLOCK.format(skill=skill_body)
+        h.log("skill_loaded", path=args.skill, injected_chars=len(skill_body))
+    else:
+        skill_block = ""
 
     agent = LlmAgent(
         name="hunter",
@@ -339,7 +391,9 @@ async def main() -> int:
         # on Vertex needs the Claude wrapper AND non-zero quota Google will not grant
         # without a sales call -- see DEFAULT_MODEL note.)
         model=args.model,
-        instruction=INSTRUCTION.format(catalog=CATALOG.read_text()),
+        instruction=INSTRUCTION.format(
+            catalog=CATALOG.read_text(), skill_block=skill_block
+        ),
         tools=[h.query_hunting_schema, h.write_report],
         before_tool_callback=h.before_tool,
         after_tool_callback=h.after_tool,
