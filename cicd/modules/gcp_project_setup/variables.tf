@@ -8,6 +8,19 @@ variable "region" {
   type        = string
 }
 
+variable "hunt_agent_principals" {
+  description = <<-DESC
+    Principals allowed to impersonate the hunt-agent SA for LOCAL harness runs
+    (phase 2b), e.g. ["user:someone@example.com"]. Empty = SA exists but only
+    something already running AS it (a future Cloud Run job) can use it.
+
+    Running the harness as yourself instead of impersonating this SA defeats the
+    read-only guarantee -- you would query as an owner. Impersonate via ADC.
+  DESC
+  type        = list(string)
+  default     = []
+}
+
 variable "platform_alert_email" {
   description = <<-DESC
     Email for "the platform itself is broken" pages (monitoring.tf).

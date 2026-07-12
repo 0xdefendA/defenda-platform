@@ -11,9 +11,10 @@ provider "google-beta" {
 module "gcp_project_setup" {
   source = "../modules/gcp_project_setup"
 
-  project_id           = var.project_id
-  region               = var.region
-  platform_alert_email = var.platform_alert_email
+  project_id            = var.project_id
+  region                = var.region
+  platform_alert_email  = var.platform_alert_email
+  hunt_agent_principals = var.hunt_agent_principals
 }
 
 resource "google_project_service" "cloudbuild_api" {

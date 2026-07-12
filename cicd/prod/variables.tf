@@ -25,6 +25,12 @@ variable "platform_alert_email" {
   default     = ""
 }
 
+variable "hunt_agent_principals" {
+  description = "Principals allowed to impersonate the read-only hunt-agent SA for local phase-2b harness runs. Empty by default."
+  type        = list(string)
+  default     = []
+}
+
 # Sensitive variables now fetched directly from Secret Manager by Cloud Build
 
 variable "firebase_messaging_sender_id" {

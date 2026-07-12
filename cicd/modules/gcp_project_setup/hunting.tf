@@ -27,6 +27,41 @@ locals {
   events_table = "`${var.project_id}.defenda_data_lake.events`"
 }
 
+# --- Authorized dataset (the load-bearing security primitive) -----------------
+# The hunting views SELECT from defenda_data_lake, but a least-privilege reader
+# (the hunt agent, and analysts on the Events screen) is granted access to
+# defenda_hunting ONLY. Without this, every view returns "Access Denied" on the
+# underlying events table for anyone who is not a project owner -- which is why it
+# has "worked" so far only when queried as owner.
+#
+# The WRONG fix is to also grant readers defenda_data_lake: that lets the agent
+# query raw events directly and bypass the curated schema entirely, defeating the
+# whole point. Instead, authorize defenda_hunting's VIEWS to read the lake on
+# behalf of the caller. The caller reaches the lake only THROUGH a curated view,
+# never directly. This is the structural guarantee, not a policy request.
+resource "google_bigquery_dataset_access" "hunting_views_read_lake" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.defenda_data_lake.dataset_id
+
+  dataset {
+    dataset {
+      project_id = var.project_id
+      dataset_id = google_bigquery_dataset.defenda_hunting.dataset_id
+    }
+    # Only VIEWS in defenda_hunting are authorized -- not arbitrary queries run
+    # from within the dataset.
+    target_types = ["VIEWS"]
+  }
+
+  depends_on = [
+    google_bigquery_table.identity_events,
+    google_bigquery_table.entity_daily_activity,
+    google_bigquery_table.first_seens,
+    google_bigquery_table.feed_coverage,
+    google_bigquery_table.iam_changes,
+  ]
+}
+
 # --- identity_events ----------------------------------------------------------
 # The workhorse. Every identity-attributed event with the common details.*
 # fields lifted to real columns. Start here for "what did this identity do".
