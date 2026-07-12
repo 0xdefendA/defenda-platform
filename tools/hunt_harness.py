@@ -287,9 +287,13 @@ useful.
    conclude anything from an empty result. An empty result from a feed nobody
    collects is not evidence of safety -- it is evidence of nothing. Say which feeds
    you are blind to.
-2. Look for what is unusual FOR THIS ENVIRONMENT, not what is unusual in general.
-3. Follow the identity. Most cloud lateral movement is identity movement.
-4. Corroborate before you believe yourself.
+2. Hunt the WHOLE environment. These views aggregate every project in the org. Do
+   not filter to a single project by default -- an intruder will not be in the one
+   you assume. `distinct_projects` in `feed_coverage` tells you the real breadth;
+   let the evidence, not an assumption, narrow your scope.
+3. Look for what is unusual FOR THIS ENVIRONMENT, not what is unusual in general.
+4. Follow the identity. Most cloud lateral movement is identity movement.
+5. Corroborate before you believe yourself.
 
 ## The most important instruction
 
@@ -341,10 +345,22 @@ async def main() -> int:
         after_tool_callback=h.after_tool,
     )
 
+    # ENVIRONMENT-WIDE, not project-scoped. The lake aggregates every project in
+    # the org via the audit sink, and real hunts sweep the whole environment -- an
+    # attacker is not going to land in the project you happened to name. (Run 1
+    # taught this the hard way: the task said "investigate project <lake project>",
+    # the agent dutifully added `WHERE project = <lake project>`, and every attack
+    # event -- attributed to a different project -- was filtered out. It correctly
+    # reported nothing, for the wrong scope.)
+    #
+    # --project is the BigQuery lake/billing project (a connection detail), NOT the
+    # hunt scope. Never put it in the task text.
     task = (
-        f"Investigate activity in project {args.project} between {args.since} and "
-        f"{args.until}. Report anything that warrants human attention -- and if "
-        f"nothing does, say so."
+        f"Investigate activity across the environment between {args.since} and "
+        f"{args.until}. The hunting views aggregate EVERY project in the org -- do "
+        f"not restrict to any single project unless the evidence leads you there. "
+        f"Report anything that warrants human attention -- and if nothing does, "
+        f"say so."
     )
 
     session_service = InMemorySessionService()
