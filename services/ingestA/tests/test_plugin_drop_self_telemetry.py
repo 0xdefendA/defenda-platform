@@ -122,6 +122,43 @@ def test_web_ui_presence_listen_is_dropped():
     assert _normalize(fs_event(FIREBASE_RULES_AGENT, "google.firestore.v1.Firestore.Listen", collection="users")) is None
 
 
+def fs_query_listen_event(principal, collection):
+    """A Listen/RunQuery over a COLLECTION (the UI subscribing to a list): the
+    collection is named in structuredQuery.from, with no document path in
+    metadata.keys."""
+    return {
+        "logName": DATA_ACCESS_LOG,
+        "protoPayload": {
+            "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+            "authenticationInfo": {"principalEmail": principal},
+            "serviceName": "firestore.googleapis.com",
+            "methodName": "google.firestore.v1.Firestore.Listen",
+            "metadata": {"@type": "type.googleapis.com/google.cloud.audit.DatastoreServiceData"},
+            "request": {
+                "addTarget": {
+                    "query": {
+                        "parent": "projects/prj-defenda-platform-adf/databases/(default)/documents",
+                        "structuredQuery": {"from": [{"collectionId": collection}]},
+                    }
+                }
+            },
+        },
+    }
+
+
+def test_web_ui_collection_query_listen_is_dropped():
+    """The events/incidents page subscribing to a collection query. The collection
+    is in structuredQuery.from, not a document path -- the extractor must find it
+    there too, or this whole class of UI list-view noise slips through."""
+    assert _normalize(fs_query_listen_event(FIREBASE_RULES_AGENT, "incidents")) is None
+    assert _normalize(fs_query_listen_event(FIREBASE_RULES_AGENT, "processed_events")) is None
+
+
+def test_query_listen_on_keep_collection_is_kept():
+    """A collection-query subscription to a keep-list collection stays."""
+    assert _normalize(fs_query_listen_event(FIREBASE_RULES_AGENT, "rules")) is not None
+
+
 def test_platform_sa_operational_collection_crud_is_dropped():
     """Platform SAs churning internal bookkeeping collections -- reads AND writes."""
     assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection="processed_events")) is None
@@ -129,12 +166,20 @@ def test_platform_sa_operational_collection_crud_is_dropped():
     assert _normalize(fs_write_event(SELF, "processed_events")) is None
 
 
-def test_security_meaningful_collections_are_kept():
-    """rules / settings / alerts CRUD is config + audit trail -- keep read AND
-    write, even from our own identities."""
-    for coll in ("rules", "settings", "alerts"):
+def test_config_collections_are_kept():
+    """Only CONFIG collections (rules, settings) are kept -- changes to how the
+    platform is configured. Keep read AND write."""
+    for coll in ("rules", "settings"):
         assert _normalize(fs_write_event(SELF, coll)) is not None, f"write {coll}"
         assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection=coll)) is not None, f"read {coll}"
+
+
+def test_platform_record_crud_is_dropped():
+    """Using the platform -- viewing OR updating alerts, incidents, events -- is
+    normal activity, not audited. All of it drops, read and write."""
+    for coll in ("alerts", "incidents", "events"):
+        assert _normalize(fs_write_event(SELF, coll)) is None, f"write {coll}"
+        assert _normalize(fs_event(SELF, "google.firestore.v1.Firestore.Lookup", collection=coll)) is None, f"read {coll}"
 
 
 def test_external_identity_firestore_is_kept():

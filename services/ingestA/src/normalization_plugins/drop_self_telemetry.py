@@ -11,19 +11,21 @@ FIRESTORE_SERVICES = ("firestore.googleapis.com", "datastore.googleapis.com")
 # noisiest of which is presence (folks moving around alerts sets a presence doc).
 FIREBASE_RULES_AGENT_SUFFIX = "@firebase-rules.iam.gserviceaccount.com"
 
-# Firestore collections whose document CRUD is SECURITY-MEANINGFUL and must be
-# kept: detection rules, platform settings/config, and the alerts themselves
-# ("who changed this alert"). Everything else our own identities do at the
-# document level (presence, dedup markers, inflight sequence churn) is operational
-# noise and is dropped. Overridable via env for tuning without a code change.
+# Firestore collections whose document CRUD is CONFIGURATION and must be kept:
+# detection rules and platform settings. Everything else our own identities do at
+# the document level is NORMAL PLATFORM USAGE -- viewing and updating alerts,
+# incidents, events; presence; dedup markers; inflight churn -- and is dropped.
+# We do not audit people using the platform; we audit changes to how it is
+# configured. Overridable via env for tuning without a code change.
 #
-# NOTE: structural changes -- creating a database, deploying security rules -- are
-# Admin Activity, a different audit_log_type this plugin never sees, so they are
-# kept automatically regardless of this list.
+# NOTE: the non-normal things worth logging -- deleting a database, changing
+# security rules, IAM -- are Admin Activity, a different audit_log_type this plugin
+# never sees, so they are kept automatically regardless of this list. This list is
+# only for CONFIG that happens to be stored as Firestore documents.
 FIRESTORE_KEEP_COLLECTIONS = tuple(
     c.strip()
     for c in os.environ.get(
-        "FIRESTORE_AUDIT_COLLECTIONS", "rules,settings,alerts"
+        "FIRESTORE_AUDIT_COLLECTIONS", "rules,settings"
     ).split(",")
     if c.strip()
 )
@@ -86,21 +88,22 @@ class message(object):
           exfiltrating or tampering stays visible. (Accepted trade: that SA's
           plain reads and metadata recon of our own project go unlogged.)
 
-        Firestore / Datastore -- our own identities' document CRUD as the platform
-        is USED (platform SAs, and the firebase-rules web agent = the respondA UI
-        driven by a human):
-          drop READS AND WRITES of OPERATIONAL collections (presence 'users',
-          'processed_events', inflight churn -- high volume, no security value).
-          KEEP the security-meaningful collections (rules, settings, alerts) so
-          config and alert-handling stay audited.
+        Firestore / Datastore -- our own identities USING the platform (platform
+        SAs, and the firebase-rules web agent = the respondA UI driven by a human):
+          drop READS AND WRITES of everything EXCEPT config. Viewing and updating
+          alerts, incidents, events; presence; dedup markers; inflight churn --
+          all normal platform usage, all dropped. We do not audit people using the
+          platform.
+          KEEP only the CONFIG collections (rules, settings) -- changes to how the
+          platform is configured.
 
         KEPT (never dropped) across the board:
           * BigQuery writes/exports/DML,
           * anything on iamcredentials, IAM, or any other service,
-          * ANY Admin Activity event -- so creating a database or deploying
-            security rules is always kept (different audit_log_type; never seen
-            here),
-          * Firestore CRUD on the keep-list collections,
+          * ANY Admin Activity event -- so the non-normal things worth logging
+            (deleting a database, deploying/altering security rules, IAM changes)
+            are always kept (different audit_log_type; never seen here),
+          * Firestore CRUD on the config keep-list,
           * data_access by any NON-self identity (the actual hunt signal).
 
         Fail-safe: if anything is uncertain, KEEP the event. We drop only what we
@@ -138,8 +141,27 @@ class message(object):
         )
 
     def _firestore_collection(self, dot) -> str:
-        """Best-effort collection name from the document path(s) in the event.
-        '' if undeterminable -> caller fail-safe KEEPs."""
+        """Best-effort collection name for the event. '' if undeterminable ->
+        caller fail-safe KEEPs.
+
+        Two shapes: document-targeted ops carry a .../documents/<collection>/<id>
+        path; query/collection-targeted ops (a Listen or RunQuery over a
+        collection, e.g. the UI subscribing to a list) name the collection
+        directly as structuredQuery.from[].collectionId with no document path."""
+
+        # 1) structured-query targets name the collection directly.
+        for qpath in (
+            "details.protopayload.request.addtarget.query.structuredquery.from",
+            "details.protopayload.request.structuredquery.from",
+            "details.protopayload.request.newtransaction.structuredquery.from",
+        ):
+            frm = dot.get(qpath, []) or []
+            if isinstance(frm, list):
+                for f in frm:
+                    if isinstance(f, dict) and f.get("collectionid"):
+                        return str(f["collectionid"])
+
+        # 2) document-path targets: parse the collection out of the resource path.
         candidates = []
 
         keys = dot.get("details.protopayload.metadata.keys", []) or []
