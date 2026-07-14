@@ -79,10 +79,8 @@ except ImportError as e:
 # Framework Note): read-only tools, signals-only writes, bounded loops, eval gates
 # -- none of it depends on which model is behind the loop. And the blind-window
 # eval is how we find out EMPIRICALLY whether Gemini can hunt and stay quiet,
-# rather than arguing model quality in the abstract. Default to Pro for the first
-# proving run so a failure is informative about the TASK, not the model ceiling;
-# the improvement loop can later test whether Flash holds up at lower cost.
-DEFAULT_MODEL = "gemini-3.1-pro-preview"
+# rather than arguing model quality in the abstract.
+DEFAULT_MODEL = "gemini-3.1-flash-lite"
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -148,7 +146,9 @@ class Harness:
     def log(self, kind: str, **payload):
         """Append-only, flushed. A run that dies mid-way is still evidence."""
         self.transcript.write(
-            json.dumps({"ts": datetime.now(timezone.utc).isoformat(), "kind": kind, **payload})
+            json.dumps(
+                {"ts": datetime.now(timezone.utc).isoformat(), "kind": kind, **payload}
+            )
             + "\n"
         )
         self.transcript.flush()
@@ -188,7 +188,11 @@ class Harness:
         }
 
     def write_report(
-        self, verdict: str, summary: str, findings: list[dict], tool_context: ToolContext
+        self,
+        verdict: str,
+        summary: str,
+        findings: list[dict],
+        tool_context: ToolContext,
     ) -> dict:
         """Write your final report. Call this exactly once, when you are done.
 
@@ -218,7 +222,9 @@ class Harness:
 
     # --- guardrails ----------------------------------------------------------
 
-    def before_tool(self, tool, args: dict, tool_context: ToolContext) -> Optional[dict]:
+    def before_tool(
+        self, tool, args: dict, tool_context: ToolContext
+    ) -> Optional[dict]:
         """Returning a dict SKIPS the real tool and feeds the dict back as its
         response. That is how a spent budget becomes an instruction instead of a
         crash."""
@@ -243,8 +249,7 @@ class Harness:
         # IAM: run this as a service account with roles/bigquery.dataViewer on
         # defenda_hunting alone, plus roles/bigquery.jobUser. The agent must be
         # structurally incapable of writing or of reading the raw lake -- not merely
-        # instructed not to. Event content is attacker-controlled; a prompt is not a
-        # permission.
+        # instructed not to. Event content is potentially attacker-controlled
         if not re.match(r"^\s*(--[^\n]*\n|\s)*select\b", sql, re.I):
             return {"status": "error", "error": "Only SELECT is permitted."}
         for ref in re.findall(r"`([^`]+)`", sql):
@@ -261,7 +266,9 @@ class Harness:
         self.log("query", n=self.queries, sql=sql)
         return None
 
-    def after_tool(self, tool, args, tool_context, tool_response: dict) -> Optional[dict]:
+    def after_tool(
+        self, tool, args, tool_context, tool_response: dict
+    ) -> Optional[dict]:
         self.log(
             "tool_result",
             tool=tool.name,
@@ -316,6 +323,7 @@ Call write_report exactly once when you are done.
 {catalog}
 """
 
+
 # Injected only when --skill is passed. The SOP is guidance distilled from prior
 # hunts -- a strong prior on strategy and judgment, NOT a script to execute
 # verbatim and NOT a substitute for reading the actual data. A skill that made the
@@ -348,8 +356,12 @@ trust the data and say so -- that disagreement is how the SOP improves.
 
 
 async def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--project", required=True, help="Platform project (owns defenda_hunting)")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument(
+        "--project", required=True, help="Platform project (owns defenda_hunting)"
+    )
     p.add_argument("--since", required=True)
     p.add_argument("--until", required=True)
     p.add_argument("--run-id", required=True)
@@ -400,12 +412,7 @@ async def main() -> int:
     )
 
     # ENVIRONMENT-WIDE, not project-scoped. The lake aggregates every project in
-    # the org via the audit sink, and real hunts sweep the whole environment -- an
-    # attacker is not going to land in the project you happened to name. (Run 1
-    # taught this the hard way: the task said "investigate project <lake project>",
-    # the agent dutifully added `WHERE project = <lake project>`, and every attack
-    # event -- attributed to a different project -- was filtered out. It correctly
-    # reported nothing, for the wrong scope.)
+    # the org via the audit sink, and real hunts sweep the whole environment
     #
     # --project is the BigQuery lake/billing project (a connection detail), NOT the
     # hunt scope. Never put it in the task text.
@@ -418,7 +425,9 @@ async def main() -> int:
     )
 
     session_service = InMemorySessionService()
-    await session_service.create_session(app_name="hunta", user_id="harness", session_id=args.run_id)
+    await session_service.create_session(
+        app_name="hunta", user_id="harness", session_id=args.run_id
+    )
     runner = Runner(app_name="hunta", agent=agent, session_service=session_service)
 
     hit_llm_cap = False
@@ -456,7 +465,9 @@ async def main() -> int:
 
     if h.report is None:
         print("\n  NO REPORT. The agent never called write_report.")
-        print("  Read transcript.jsonl -- this is a harness/prompt finding, not an agent failure.")
+        print(
+            "  Read transcript.jsonl -- this is a harness/prompt finding, not an agent failure."
+        )
         return 1
 
     r = h.report
@@ -474,7 +485,9 @@ async def main() -> int:
         )
 
     print("\nNext: score against fixtures/<name>/ground_truth.json.")
-    print("Recall = did it find the canary. Precision = did it stay quiet on benign windows.")
+    print(
+        "Recall = did it find the canary. Precision = did it stay quiet on benign windows."
+    )
     return 0
 
 
