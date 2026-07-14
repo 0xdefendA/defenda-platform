@@ -37,37 +37,28 @@ FIRESTORE_WRITE_METHODS = ("commit", "batchwrite", "write")
 # (.../documents/<collection>/<docid>).
 _DOC_COLLECTION_RE = re.compile(r"/documents/([^/]+)/")
 
-# BigQuery methods that can ONLY read -- safe to drop UNCONDITIONALLY, because they
-# cannot mutate data or write to a new table. Each query the platform runs emits
-# several of these (InsertJob to submit, GetQueryResults to fetch, GetJob to poll),
-# so catching only InsertJob leaves most of the loop intact -- that was the bug.
-# Matched on the method leaf, covering old-style ("jobservice.getqueryresults") and
-# new-style ("google.cloud.bigquery.v2.JobService.GetQueryResults") naming alike.
-BQ_READ_ONLY_LEAVES = (
-    "getqueryresults",
-    "getjob",
-    "listjobs",
-    "get",   # datasetService.get, tableService.get -- metadata reads
-    "list",  # *.list -- datasets/tables/tabledata/jobs, all reads
-    "getqueryschema",
-)
-
-# A BigQuery query emits SEVERAL data_access events across its lifecycle
-# (InsertJob, JobCompleted, GetQueryResults), and each carries the statementType at
-# a DIFFERENT payload path depending on the audit format (new BigQueryAuditMetadata
-# vs old AuditData). Rather than enumerate methods, we read the statement type from
-# wherever it lives and classify on THAT: SELECT is a read; CREATE_TABLE_AS_SELECT /
-# INSERT / UPDATE / DELETE / MERGE / EXPORT are writes and are kept. This is robust
-# to method-name variety and keeps exfil/tampering visible by construction.
-BQ_STATEMENT_TYPE_PATHS = (
-    # new-style InsertJob emits TWO events: a "first" (jobInsertion) and a "last"
-    # (jobChange). Both carry the statement type, at different keys.
-    "details.protopayload.metadata.jobinsertion.job.jobconfig.queryconfig.statementtype",
-    "details.protopayload.metadata.jobchange.job.jobconfig.queryconfig.statementtype",
-    # old-style, jobservice.jobcompleted
-    "details.protopayload.servicedata.jobcompletedevent.job.jobconfiguration.query.statementtype",
-    # old-style, jobservice.getqueryresults
-    "details.protopayload.servicedata.jobgetqueryresultsresponse.job.jobconfiguration.query.statementtype",
+# A BigQuery query emits several data_access events across its lifecycle
+# (InsertJob "first"=jobInsertion / "last"=jobChange, JobCompleted, GetQueryResults),
+# under BOTH an old audit format (servicedata.*) and a new one (metadata.*), with
+# the method named old-style ("jobservice.insert") or new-style
+# ("...JobService.InsertJob"). Enumerating every path/method is a losing game (it
+# leaked for four rounds). Instead: the platform's SAs only ever QUERY the lake --
+# they never write to BigQuery via jobs -- so for a platform SA, DROP by default and
+# keep ONLY a positively-identified WRITE query (CTAS / EXPORT / DML), found by
+# searching the payload for a statementType anywhere. A SELECT, or no statement at
+# all (a bare read/fetch), is noise and drops.
+BQ_WRITE_STATEMENT_TYPES = (
+    "CREATE_TABLE_AS_SELECT",
+    "CREATE_TABLE",
+    "CREATE_VIEW",
+    "CREATE_MATERIALIZED_VIEW",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "MERGE",
+    "EXPORT",
+    "DROP_TABLE",
+    "TRUNCATE_TABLE",
 )
 
 
@@ -194,27 +185,38 @@ class message(object):
                 return m.group(1)
         return ""
 
-    def _bq_statement_type(self, dot) -> str:
-        """The query's statementType, from whichever lifecycle path carries it.
-        Empty string if none present (an unknowable => fail-safe keep)."""
-        for path in BQ_STATEMENT_TYPE_PATHS:
-            stype = str(dot.get(path, "") or "").upper()
-            if stype:
-                return stype
+    def _find_statement_type(self, obj) -> str:
+        """Recursively find a `statementtype` value ANYWHERE in the payload --
+        robust to old vs new audit formats and lifecycle-event variety, where the
+        field hides under different keys (jobInsertion / jobChange /
+        jobCompletedEvent / jobInsertRequest / ...). '' if none present."""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k.lower() == "statementtype" and isinstance(v, str):
+                    return v.upper()
+                found = self._find_statement_type(v)
+                if found:
+                    return found
+        elif isinstance(obj, list):
+            for item in obj:
+                found = self._find_statement_type(item)
+                if found:
+                    return found
         return ""
 
     def _should_drop(self, dot, principal: str, service: str, method: str) -> bool:
-        # --- BigQuery: our own SA reading our own lake ------------------------
-        # Reads are noise; writes (CTAS/DML/EXPORT) stay visible as exfil signal.
+        # --- BigQuery: our own SA querying our own lake ----------------------
+        # Platform SAs only ever QUERY BigQuery (rule eval, UI, hunts); they never
+        # write via jobs. So DROP by default and keep ONLY a positively-identified
+        # WRITE query (CTAS / EXPORT / DML) -- the exfil/tampering signal. A SELECT,
+        # or a bare read/fetch with no statement at all, is noise. This inverts the
+        # usual fail-safe FOR THIS CASE, on purpose: enumerating every audit path /
+        # method name to find the SELECTs was a losing game.
         if service == "bigquery.googleapis.com":
             if not self._is_platform_sa(principal):
-                return False
-            leaf = method.lower().rsplit(".", 1)[-1]
-            if leaf in BQ_READ_ONLY_LEAVES:
-                return True
-            # Classify on statement type wherever it appears. Only a plain SELECT
-            # is a read; anything else (or none found) is kept (fail-safe).
-            return self._bq_statement_type(dot) == "SELECT"
+                return False  # external identity querying our lake => keep (exfil)
+            stype = self._find_statement_type(dot.get("details", {}))
+            return stype not in BQ_WRITE_STATEMENT_TYPES  # keep only real writes
 
         # --- Firestore / Datastore: our own use of the platform ---------------
         # We audit CONFIG CHANGES, not platform usage. The only thing kept is a

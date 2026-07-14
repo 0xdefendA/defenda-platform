@@ -244,16 +244,21 @@ def test_platform_sa_bigquery_jobcompleted_write_is_kept():
         assert _normalize(bq_completed_event(SELF, stype)) is not None, stype
 
 
-def test_platform_sa_bigquery_pure_reads_are_dropped():
-    """Result/metadata read methods drop unconditionally, old- and new-style names."""
+def test_platform_sa_bigquery_reads_all_shapes_dropped():
+    """Every platform-SA BigQuery query-job shape drops, whether or not it carries
+    a statement type -- old-style 'jobservice.insert' (the 360/360 residual),
+    new-style InsertJob, result fetches, metadata reads. This is the point of the
+    inverted default: shape variety no longer leaks."""
     for method in (
+        "jobservice.insert",          # old-style name -- the residual cost driver
+        "jobservice.getqueryresults",
         "jobservice.getjob",
         "tabledataservice.list",
         "google.cloud.bigquery.v2.JobService.GetQueryResults",
         "google.cloud.bigquery.v2.TableDataService.List",
     ):
         e = bq_event(SELF, "SELECT", method=method)
-        e["protoPayload"].pop("metadata", None)
+        e["protoPayload"].pop("metadata", None)  # no statement anywhere
         assert _normalize(e) is None, method
 
 
@@ -307,12 +312,15 @@ def test_platform_sa_admin_activity_is_kept():
     assert r["details"]["audit_log_type"] == "activity"
 
 
-def test_missing_statement_type_is_kept():
-    """Fail-safe: if we cannot confirm it is a SELECT, we do not drop it."""
+def test_platform_sa_bigquery_no_statement_is_dropped():
+    """Inverted fail-safe for platform-SA BigQuery: a query job by our own SA with
+    no discoverable statement type (a bare read/fetch, or an audit shape we can't
+    parse) is DROPPED. Platform SAs only ever query the lake; keep only a
+    positively-identified WRITE. This is what finally kills the whack-a-mole:
+    unrecognized query-job shapes drop instead of leaking."""
     e = bq_event(SELF, "SELECT")
-    # remove the statementType so read-ness is unknowable
     del e["protoPayload"]["metadata"]["jobChange"]["job"]["jobConfig"]["queryConfig"]["statementType"]
-    assert _normalize(e) is not None
+    assert _normalize(e) is None
 
 
 def test_no_configured_project_keeps_everything():
