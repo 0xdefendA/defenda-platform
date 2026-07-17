@@ -17,7 +17,7 @@ alert_name: "deadman_google_workspace_feed"
 alert_type: "deadman"
 category: "deadman"
 criteria: "source='google_workspace'"
-lookback_minutes: 180
+lookback_minutes: 10
 threshold: 0
 severity: "CRITICAL"
 summary: "DEADMAN: no Google Workspace events in 3h -- identity telemetry is down (check collector credentials, OAuth scopes, and cursor state)"

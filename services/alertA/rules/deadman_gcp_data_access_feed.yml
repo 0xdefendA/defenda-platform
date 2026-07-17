@@ -28,7 +28,7 @@ alert_name: "deadman_gcp_data_access_feed"
 alert_type: "deadman"
 category: "deadman"
 criteria: "source='gcp_audit' AND JSON_VALUE(details.audit_log_type) = 'data_access'"
-lookback_minutes: 240
+lookback_minutes: 10
 threshold: 0
 severity: "HIGH"
 summary: "DEADMAN: no GCP Data Access audit logs in 4h -- impersonation and secret-access hunting is BLIND (empty results now mean nothing)"
