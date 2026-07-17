@@ -18,7 +18,7 @@ alert_name: "deadman_gcp_audit_feed"
 alert_type: "deadman"
 category: "deadman"
 criteria: "source='gcp_audit' AND JSON_VALUE(details.audit_log_type) = 'activity'"
-lookback_minutes: 120
+lookback_minutes: 10
 threshold: 0
 severity: "CRITICAL"
 summary: "DEADMAN: no GCP Admin Activity audit logs in 2h -- the org sink may be deleted, disabled, or refiltered"

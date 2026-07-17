@@ -48,6 +48,16 @@ async def index(request: Request):
     # Run normalization plugins
     normalized_event, metadata = run_normalization_plugins(event_dotdict)
 
+    # A normalization plugin may DROP an event by returning None (the plugin
+    # runner supports this; see utils/plugins.send_event_to_plugins). That is how
+    # drop_self_telemetry sheds the platform's own self-referential read traffic.
+    # Short-circuit here: a dropped event is a SUCCESS (we deliberately did not
+    # want it), and must never reach enrichment (which would crash on None) or the
+    # BigQuery insert (which would write a null record). Returning success also
+    # acks the Pub/Sub message so it is not redelivered forever.
+    if normalized_event is None:
+        return {"status": "success", "message": "Event dropped by normalization"}
+
     # Run enrichment plugins
     enriched_event, metadata = run_enrichment_plugins(normalized_event, metadata)
 

@@ -3,6 +3,11 @@ output "terraform_state_bucket_name" {
   value       = google_storage_bucket.terraform_state.name
 }
 
+output "hunta_agent_sa_email" {
+  description = "Read-only hunt agent SA. Impersonate this for local phase-2b harness runs: gcloud auth application-default login --impersonate-service-account=<this>."
+  value       = google_service_account.hunta_agent.email
+}
+
 output "project_number" {
   description = "The project number of the GCP project."
   value       = data.google_project.project.number

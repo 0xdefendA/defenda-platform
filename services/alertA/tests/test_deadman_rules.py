@@ -85,7 +85,7 @@ def test_heartbeat_matches_its_own_deadman_criteria(heartbeat):
 
 
 def test_degraded_rule_matches_a_failing_heartbeat(main):
-    """The rule that would have caught 2026-07-11. It keys on details.failed > 0,
+    """The rule keys on details.failed > 0,
     so the emitter must publish `failed` as a castable integer."""
     captured = {}
     main.publisher = MagicMock()

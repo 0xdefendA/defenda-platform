@@ -184,23 +184,53 @@ class TestGcpAuditKnownMappingGaps(unittest.TestCase):
     looks exactly like a quiet environment.
     """
 
-    @unittest.expectedFailure
     def test_multi_binding_policy_captures_every_delta(self):
-        """GAP 1 (certain): the plugin reads bindingDeltas[0] and drops the rest.
+        """FIXED (was GAP 1): the plugin used to read bindingDeltas[0] and drop the rest.
 
-        A single SetIamPolicy call routinely carries several bindingDeltas. Here
-        the owner grant and the external-user grant both sit behind a benign
-        viewer grant at index 0 -- so iam_changes.granted_member reports the
-        boring one and the hunt sees nothing interesting. Worse than a miss: a
-        confidently wrong answer.
+        A single SetIamPolicy call routinely carries several bindingDeltas. In this
+        fixture the owner grant and the external-user grant both sit BEHIND a benign
+        roles/viewer grant at index 0 -- so the old code reported the boring one and
+        the external-grant hunt came back clean. Worse than a miss: a confidently
+        wrong answer.
         """
         result = _normalize(_load("sample_gcp_audit_set_iam_policy_multi_binding.json"))
         details = result["details"]
 
         members = details.get("policy_members", [])
-        assert "serviceAccount:stratus-backdoor@sacrificial-project.iam.gserviceaccount.com" in members
+        assert (
+            "serviceAccount:stratus-backdoor@sacrificial-project.iam.gserviceaccount.com"
+            in members
+        )
         assert "user:external-evil@gmail.com" in members
+        assert "roles/owner" in details.get("policy_roles", [])
         assert "roles/owner" in details.get("policy_delta", "")
+        assert details["policy_delta_count"] == 3
+        assert "multi-binding-change" in result["tags"]
+
+    def test_multi_binding_scalars_are_the_first_delta_only(self):
+        """The scalar fields are a compatibility shim and a footgun. Pin the
+        behavior so nobody mistakes them for the whole story: policy_member is
+        bindingDeltas[0], which here is the BENIGN grant. Hunts must use the arrays.
+        """
+        result = _normalize(_load("sample_gcp_audit_set_iam_policy_multi_binding.json"))
+        details = result["details"]
+
+        assert details["policy_member"] == (
+            "serviceAccount:benign-app@sacrificial-project.iam.gserviceaccount.com"
+        )
+        # ...while the array still carries the grant that actually matters.
+        assert "user:external-evil@gmail.com" in details["policy_members"]
+
+    def test_single_binding_scalars_unchanged(self):
+        """Existing rules/views read the scalar fields. The multi-delta fix must not
+        change what a single-delta event looks like."""
+        result = _normalize(_load_sample())
+        details = result["details"]
+
+        assert details["policy_delta"] == "ADD roles/editor user:external-evil@gmail.com"
+        assert details["policy_member"] == "user:external-evil@gmail.com"
+        assert details["policy_members"] == ["user:external-evil@gmail.com"]
+        assert "multi-binding-change" not in result["tags"]
 
     def test_service_account_scoped_policy_extracts_member(self):
         """SetIamPolicy on a service account (iam.googleapis.com), not a project.
