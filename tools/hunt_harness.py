@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """
-hunt_harness.py -- huntA phase 2b. The minimal ADK hunt agent.
-
-Seed loop step 3: give an agent the hunting schema, a read-only query tool, and
-NO SKILL. Then find out whether an LLM handed this schema actually hunts.
+hunt_harness.py The minimal ADK hunt agent.
 
 Deliberately not the orchestrator. No Cloud Run, no Pub/Sub, no Firestore. That is
 plumbing we have built before (alertA's fan-out) and it is not where the risk is.
@@ -14,7 +11,7 @@ The risk is the agent loop. Prove the loop, then industrialise it.
     # Vertex env (Gemini is native to ADK -- no extra SDK):
     export GOOGLE_GENAI_USE_VERTEXAI=TRUE
     export GOOGLE_CLOUD_PROJECT=$PLATFORM_PROJECT
-    export GOOGLE_CLOUD_LOCATION=us-central1
+    export GOOGLE_CLOUD_LOCATION=global
 
     # the honest run: agent is NOT told whether this window contains an attack
     python tools/hunt_harness.py \
@@ -69,18 +66,7 @@ try:
 except ImportError as e:
     sys.exit(f"{e}\n\npip install 'google-adk==2.4.*' google-cloud-bigquery")
 
-# MODEL CHOICE -- Gemini, not Anthropic.
-#
-# Anthropic models ARE served on Vertex Model Garden, but Google gates them behind
-# a per-model quota that is ZERO by default and only lifts after a sales
-# conversation. "Enabled" is not "usable". So on GCP we run Gemini natively.
-#
-# This is exactly why the huntA design was kept model-agnostic (see the plan's
-# Framework Note): read-only tools, signals-only writes, bounded loops, eval gates
-# -- none of it depends on which model is behind the loop. And the blind-window
-# eval is how we find out EMPIRICALLY whether Gemini can hunt and stay quiet,
-# rather than arguing model quality in the abstract.
-DEFAULT_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -360,7 +346,9 @@ async def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument(
-        "--project", required=True, help="Platform project (owns defenda_hunting)"
+        "--project",
+        required=True,
+        help="Platform project where big query lives (owns defenda_hunting)",
     )
     p.add_argument("--since", required=True)
     p.add_argument("--until", required=True)
@@ -374,9 +362,9 @@ async def main() -> int:
     p.add_argument(
         "--skill",
         default=None,
-        help="Path to a SKILL.md to run WITH (seed loop step 4+). Omit for a "
-        "skill-less run (step 3). The transcript of a skill-run is what feeds the "
-        "next revision; a quiet-window skill-run is how you find over-firing.",
+        help="Path to a SKILL.md to run WITH uv run  tools/hunt_harness.py --project prj-something "
+        "--since <a quiet 30-60min window> --until <...> "
+        "--run-id quiet-skill-01 --skill skills/hunt-control-plane-iam-abuse/SKILL.md",
     )
     args = p.parse_args()
 
