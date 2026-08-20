@@ -121,6 +121,15 @@ locals {
     for f in fileset(path.root, "../../shared/**") : filesha1(f)
   ]))
   querya_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/querya-service:${local.querya_hash}"
+
+  # huntA bundles the shared engine AND the hunting-schema catalog (docs/), so a
+  # change to any of the three should rebuild.
+  hunta_hash = sha1(join("", concat(
+    [for f in fileset(path.root, "../../services/huntA/**") : filesha1(f)],
+    [for f in fileset(path.root, "../../shared/**") : filesha1(f)],
+    [filesha1("../../docs/hunting_schema.md")],
+  )))
+  hunta_image_name = "${local.location}-docker.pkg.dev/${local.project_id}/${local.gar_repo_name}/hunta-service:${local.hunta_hash}"
 }
 
 resource "terraform_data" "ingesta_build" {
@@ -188,6 +197,33 @@ resource "terraform_data" "querya_build" {
     command = <<EOT
         gcloud builds submit ../.. \
           --config ../../services/queryA/cloudbuild.yaml \
+          --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
+          --service-account=${google_service_account.cloudbuild_sa.id} \
+          --project=${local.project_id}
+      EOT
+    environment = {
+      PROJECT_ID = local.project_id
+    }
+  }
+  depends_on = [
+    google_artifact_registry_repository.image-repo,
+    google_storage_bucket.cloudbuild_artifacts,
+    google_project_service.cloudbuild_api,
+    google_project_iam_member.sa_roles
+  ]
+}
+
+resource "terraform_data" "hunta_build" {
+  input = local.hunta_image_name # the image name with tag
+
+  triggers_replace = [
+    local.hunta_hash
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+        gcloud builds submit ../.. \
+          --config ../../services/huntA/cloudbuild.yaml \
           --substitutions=_IMAGE=${self.input},_LOCATION=${local.location} \
           --service-account=${google_service_account.cloudbuild_sa.id} \
           --project=${local.project_id}
@@ -315,6 +351,64 @@ resource "google_cloud_run_v2_service" "queryA_service" {
   }
 }
 
+resource "google_cloud_run_v2_service" "huntA_service" {
+  project  = var.project_id
+  name     = "hunta-service"
+  location = var.region
+
+  template {
+    service_account = module.gcp_project_setup.hunta_runner_sa_email
+    # A hunt is a bounded agent loop with several BigQuery + Vertex round trips;
+    # give it room past the default request timeout.
+    timeout = "900s"
+    containers {
+      image = terraform_data.hunta_build.output
+      resources {
+        limits = {
+          cpu    = "2"
+          memory = "1Gi"
+        }
+      }
+      env {
+        name  = "PROJECT_ID"
+        value = var.project_id
+      }
+      # Route google-genai to Vertex (uses the runner SA's ADC) instead of the
+      # Gemini Developer API (which needs an API key). aiplatform.user alone is
+      # not enough — without these the SDK never tries Vertex and errors with
+      # "No API key was provided".
+      env {
+        name  = "GOOGLE_GENAI_USE_VERTEXAI"
+        value = "TRUE"
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+      env {
+        name  = "GOOGLE_CLOUD_LOCATION"
+        value = var.hunt_vertex_location
+      }
+      # Validate this model id resolves in your Vertex location. Overridable here
+      # without a code change.
+      env {
+        name  = "HUNT_MODEL"
+        value = var.hunt_model
+      }
+      # OIDC caller verification: only the scheduler SA is accepted.
+      env {
+        name  = "PUSH_SA_EMAIL"
+        value = module.gcp_project_setup.hunta_runner_sa_email
+      }
+    }
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+}
+
 resource "google_cloud_run_v2_service" "respondA_service" {
   project  = var.project_id
   name     = "responda-service"
@@ -370,6 +464,17 @@ resource "google_cloud_run_v2_service_iam_member" "responda_invoker" {
   member   = "allUsers" # Allow unauthenticated invocation as per requirements
 }
 
+# huntA is only ever called by its own scheduler, so it is NOT allUsers -- invoke
+# is granted to exactly the scheduler SA. Tighter than the push-driven services,
+# and it can be because there is no Pub/Sub fan-out to route.
+resource "google_cloud_run_v2_service_iam_member" "hunta_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.huntA_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${module.gcp_project_setup.hunta_runner_sa_email}"
+}
+
 # --- Secrets ---
 
 resource "google_secret_manager_secret" "firebase_api_key" {
@@ -414,6 +519,28 @@ resource "google_cloud_scheduler_job" "trigger_alerta" {
     oidc_token {
       service_account_email = module.gcp_project_setup.alerta_sa_email
       audience              = google_cloud_run_v2_service.alertA_service.uri
+    }
+  }
+}
+
+# Twice-daily hunt. One job, two fire times via the cron hour list (06:00 and
+# 18:00). With a 12h look-back that is continuous coverage with overlap safety if
+# a run is late. attempt_deadline covers the bounded agent loop (BigQuery + Vertex
+# round trips).
+resource "google_cloud_scheduler_job" "trigger_hunta" {
+  project          = var.project_id
+  name             = "trigger-hunta"
+  region           = var.region
+  schedule         = "0 6,18 * * *"
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "900s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "${google_cloud_run_v2_service.huntA_service.uri}/run"
+    oidc_token {
+      service_account_email = module.gcp_project_setup.hunta_runner_sa_email
+      audience              = google_cloud_run_v2_service.huntA_service.uri
     }
   }
 }

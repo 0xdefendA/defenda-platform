@@ -31,6 +31,18 @@ variable "hunt_agent_principals" {
   default     = []
 }
 
+variable "hunt_model" {
+  description = "Vertex Gemini model id the scheduled huntA service runs. Validate it resolves in your region before deploy."
+  type        = string
+  default     = "gemini-3.7-flash"
+}
+
+variable "hunt_vertex_location" {
+  description = "Vertex AI location for huntA's Gemini calls (GOOGLE_CLOUD_LOCATION). 'global' matches the local harness; set a region like us-central1 if your model requires it."
+  type        = string
+  default     = "global"
+}
+
 # Sensitive variables now fetched directly from Secret Manager by Cloud Build
 
 variable "firebase_messaging_sender_id" {
