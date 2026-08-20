@@ -57,5 +57,12 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Hunt reports written by huntA (read-only from the UI; the service writes
+    // via a backend service account, which bypasses these rules).
+    match /hunt_reports/{runId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
   }
 }
