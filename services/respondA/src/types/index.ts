@@ -79,3 +79,47 @@ export interface TimelineEvent {
     sortOrder?: number;
     timezone?: string;
 }
+
+// --- huntA: scheduled AI threat-hunt reports (hunt_reports collection) ---
+
+export type HuntVerdict = 'findings' | 'nothing_of_concern' | 'no_report';
+
+export interface HuntFinding {
+    title: string;
+    confidence: 'high' | 'medium' | 'low';
+    entities: string[];
+    narrative: string;
+    evidence_eventids: string[];
+    why_not_benign: string;
+}
+
+export interface HuntTranscriptRecord {
+    ts?: string;
+    kind: string; // 'query_run' | 'tool_result' | 'model_text' | 'budget_exhausted' | ...
+    n?: number;
+    sql?: string;
+    row_count?: number;
+    truncated?: boolean;
+    bytes?: number;
+    text?: string;
+    [key: string]: unknown;
+}
+
+export interface HuntReport {
+    id: string;
+    run_id: string;
+    verdict: HuntVerdict;
+    summary: string;
+    findings: HuntFinding[];
+    window: { since?: string; until?: string };
+    model: string;
+    cost?: {
+        queries?: number;
+        bytes_scanned?: number;
+        budget_exhausted?: boolean;
+        llm_cap_exceeded?: boolean;
+    };
+    transcript?: HuntTranscriptRecord[];
+    produced_report?: boolean;
+    created_at: any; // Firestore Timestamp
+}
