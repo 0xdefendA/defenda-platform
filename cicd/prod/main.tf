@@ -406,7 +406,7 @@ resource "google_cloud_scheduler_job" "trigger_alerta" {
   project  = var.project_id
   name     = "trigger-alerta"
   region   = var.region
-  schedule = "* * * * *" # Every minute
+  schedule = "*/5 * * * *" # Every 5 minutes
 
   http_target {
     http_method = "POST"
