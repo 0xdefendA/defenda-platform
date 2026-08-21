@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Radar, Search, CheckCircle2, AlertTriangle, HelpCircle } from 'lucide-react';
+import { Radar, Search, CheckCircle2, AlertTriangle, HelpCircle, X } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { HuntDetail } from '../components/hunts/HuntDetail';
 import { useHunts } from '../hooks/useHunts';
@@ -17,9 +17,38 @@ const fmtDate = (ts: any): string => {
     return d ? format(d, 'yyyy-MM-dd HH:mm') : '—';
 };
 
+const VERDICT_FILTERS: { value: HuntVerdict | null; label: string }[] = [
+    { value: null, label: 'All' },
+    { value: 'findings', label: 'Findings' },
+    { value: 'nothing_of_concern', label: 'Clear' },
+    { value: 'no_report', label: 'No report' },
+];
+
+// Client-side text search over the loaded window: run id, summary, and any
+// finding title / narrative / entity. (Verdict is filtered server-side.)
+const matchesSearch = (hunt: HuntReport, term: string): boolean => {
+    if (!term) return true;
+    const t = term.toLowerCase();
+    if (hunt.run_id?.toLowerCase().includes(t)) return true;
+    if (hunt.summary?.toLowerCase().includes(t)) return true;
+    return (hunt.findings || []).some(
+        (f) =>
+            f.title?.toLowerCase().includes(t) ||
+            f.narrative?.toLowerCase().includes(t) ||
+            (f.entities || []).some((e) => e.toLowerCase().includes(t))
+    );
+};
+
 export const HuntsPage = () => {
-    const { hunts, loading, hasMore, loadMore } = useHunts();
+    const [verdictFilter, setVerdictFilter] = useState<HuntVerdict | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const { hunts, loading, hasMore, loadMore } = useHunts(verdictFilter);
     const [selected, setSelected] = useState<HuntReport | null>(null);
+
+    const filtered = useMemo(
+        () => hunts.filter((h) => matchesSearch(h, searchTerm.trim())),
+        [hunts, searchTerm]
+    );
 
     const thClass = 'px-3 py-2 font-display text-[10px] font-bold text-muted uppercase tracking-widest';
 
@@ -33,8 +62,45 @@ export const HuntsPage = () => {
                         <Search className="w-4 h-4 text-primary" />
                         Hunts
                     </h1>
-                    <span className="text-xs text-muted">
+                    <span className="text-xs text-muted hidden lg:inline">
                         Scheduled AI threat hunts (twice daily). Open a run to see its findings and the query trail behind the verdict.
+                    </span>
+                </div>
+
+                {/* Filter + search bar */}
+                <div className="flex items-center gap-3 px-4 py-2 border-b border-thin border-border-color bg-surface flex-shrink-0 flex-wrap">
+                    <div className="flex border border-border-color rounded overflow-hidden">
+                        {VERDICT_FILTERS.map((f) => (
+                            <button
+                                key={f.label}
+                                onClick={() => setVerdictFilter(f.value)}
+                                className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors ${verdictFilter === f.value ? 'bg-primary text-white' : 'text-muted hover:text-text-main'}`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="relative flex items-center">
+                        <Search className="w-3.5 h-3.5 text-muted absolute left-2 pointer-events-none" />
+                        <input
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search summary, findings, entities, run id…"
+                            className="h-7 w-64 pl-7 pr-7 text-xs bg-background border border-border-color rounded text-text-main placeholder:text-muted/60"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2 text-muted hover:text-text-main"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
+
+                    <span className="ml-auto font-mono text-[11px] text-muted">
+                        {searchTerm ? `${filtered.length} of ${hunts.length} shown` : `${hunts.length} loaded`}
                     </span>
                 </div>
 
@@ -42,10 +108,14 @@ export const HuntsPage = () => {
                     <div className="border border-thin border-border-color bg-surface rounded-lg overflow-hidden">
                         {loading ? (
                             <div className="py-16 text-center text-sm text-muted">Loading hunts…</div>
-                        ) : hunts.length === 0 ? (
+                        ) : filtered.length === 0 ? (
                             <div className="flex flex-col items-center justify-center text-muted gap-3 py-16">
                                 <Radar className="w-10 h-10 opacity-30" />
-                                <p className="text-sm">No hunt runs yet. The scheduled hunt runs twice a day.</p>
+                                <p className="text-sm">
+                                    {hunts.length === 0
+                                        ? (verdictFilter ? 'No runs match this verdict yet.' : 'No hunt runs yet. The scheduled hunt runs twice a day.')
+                                        : 'No runs match your search in the loaded window. Try Load more.'}
+                                </p>
                             </div>
                         ) : (
                             <table className="w-full text-left border-collapse">
@@ -60,7 +130,7 @@ export const HuntsPage = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {hunts.map((hunt) => {
+                                    {filtered.map((hunt) => {
                                         const meta = VERDICT_META[hunt.verdict] || VERDICT_META.no_report;
                                         const partial = hunt.cost?.budget_exhausted || hunt.cost?.llm_cap_exceeded;
                                         return (

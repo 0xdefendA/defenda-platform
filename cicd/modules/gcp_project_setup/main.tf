@@ -191,6 +191,28 @@ resource "google_firestore_index" "timeline_context_timestamp" {
   ]
 }
 
+# huntA: server-side "findings only" filtering on the Hunts screen needs
+# where(verdict) + orderBy(created_at desc), which requires this composite index.
+resource "google_firestore_index" "hunt_reports_verdict_created_at" {
+  project    = var.project_id
+  database   = google_firestore_database.database.name
+  collection = "hunt_reports"
+
+  fields {
+    field_path = "verdict"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+
+  depends_on = [
+    google_firestore_database.database
+  ]
+}
+
 # Pub/Sub Topic
 resource "google_pubsub_topic" "defenda_event_ingest" {
   project = var.project_id
