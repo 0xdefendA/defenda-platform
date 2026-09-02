@@ -35,7 +35,10 @@ plausible narratives.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
+import random
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -52,7 +55,43 @@ from google.adk.tools.tool_context import ToolContext
 from google.cloud import bigquery
 from google.genai import types
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
+
+# Vertex returns 429 RESOURCE_EXHAUSTED under capacity/quota pressure -- common
+# right after a new Gemini release when everyone piles onto the new model and its
+# initial quota is tight. Retry the whole hunt a few times with exponential
+# backoff + jitter. A hunt is a twice-daily batch, so re-running on a 429 is fine;
+# 429s also tend to hit the FIRST model call, before many BigQuery queries run, so
+# retry cost is usually low.
+MAX_MODEL_ATTEMPTS = 4
+_RETRY_BASE_SECONDS = 10.0
+_RETRY_MAX_SECONDS = 120.0
+
+
+def _is_retryable_model_error(exc: BaseException) -> bool:
+    """True for transient model-availability errors (429 / 503 / UNAVAILABLE).
+    Deliberately signal-based rather than importing specific exception types,
+    because ADK/genai/api_core each surface these differently."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code in (429, 503):
+        return True
+    text = f"{type(exc).__name__} {exc}".lower()
+    cause = getattr(exc, "__cause__", None)
+    if cause:
+        text += f" {cause}".lower()
+    return any(
+        n in text
+        for n in ("resource_exhausted", "resource exhausted", "429", "503",
+                  "unavailable", "rate limit")
+    )
+
+
+def _backoff_delay(attempt: int) -> float:
+    """Exponential backoff with jitter. attempt is 1-based."""
+    base = _RETRY_BASE_SECONDS * (3 ** (attempt - 1))
+    return min(base, _RETRY_MAX_SECONDS) + random.uniform(0, 5)
 
 # Budgets. Hitting one is a RECORDED OUTCOME, not an exception -- "burned 12 queries
 # and found nothing" is a genuinely useful result and must not look like a crash.
@@ -380,24 +419,12 @@ async def run_hunt(
     catalog_text is docs/hunting_schema.md verbatim -- it IS the agent's map and the
     contract. Passed in (not read from a fixed path) so the service can bundle its
     own copy into the container.
+
+    Retries the whole hunt on transient model errors (429 / 503) with exponential
+    backoff. Each attempt gets a FRESH Harness so query counts and the transcript
+    reflect only the successful run, not the failed attempts.
     """
-    h = Harness(project, run_id, since, until, out_dir)
-
-    if skill_body:
-        skill_block = SKILL_BLOCK.format(skill=skill_body)
-        h.log("skill_loaded", injected_chars=len(skill_body))
-    else:
-        skill_block = ""
-
-    agent = LlmAgent(
-        name="hunter",
-        # Gemini is ADK-native: a plain model string, no wrapper class.
-        model=model,
-        instruction=INSTRUCTION.format(catalog=catalog_text, skill_block=skill_block),
-        tools=[h.query_hunting_schema, h.write_report],
-        before_tool_callback=h.before_tool,
-        after_tool_callback=h.after_tool,
-    )
+    skill_block = SKILL_BLOCK.format(skill=skill_body) if skill_body else ""
 
     # ENVIRONMENT-WIDE, not project-scoped. The lake aggregates every project via
     # the audit sink, and real hunts sweep the whole environment. --project is the
@@ -410,37 +437,87 @@ async def run_hunt(
         f"say so."
     )
 
-    session_service = InMemorySessionService()
-    await session_service.create_session(
-        app_name="hunta", user_id="harness", session_id=run_id
-    )
-    runner = Runner(app_name="hunta", agent=agent, session_service=session_service)
-
+    h: Optional[Harness] = None
     hit_llm_cap = False
-    try:
-        async for event in runner.run_async(
-            user_id="harness",
-            session_id=run_id,
-            new_message=types.Content(role="user", parts=[types.Part(text=task)]),
-            run_config=RunConfig(max_llm_calls=MAX_LLM_CALLS),
-        ):
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text:
-                        h.log("model_text", text=part.text)
-    except LlmCallsLimitExceededError as e:
-        # An outcome, not a crash.
-        hit_llm_cap = True
-        h.log("llm_cap_exceeded", error=str(e))
+    model_unavailable = False
+    attempts = 0
 
+    for attempt in range(1, MAX_MODEL_ATTEMPTS + 1):
+        attempts = attempt
+        # Fresh harness per attempt: opening the transcript with "w" truncates any
+        # partial transcript from a failed attempt, so the final one is clean.
+        h = Harness(project, run_id, since, until, out_dir)
+        if skill_body:
+            h.log("skill_loaded", injected_chars=len(skill_body))
+
+        agent = LlmAgent(
+            name="hunter",
+            # Gemini is ADK-native: a plain model string, no wrapper class.
+            model=model,
+            instruction=INSTRUCTION.format(catalog=catalog_text, skill_block=skill_block),
+            tools=[h.query_hunting_schema, h.write_report],
+            before_tool_callback=h.before_tool,
+            after_tool_callback=h.after_tool,
+        )
+        session_service = InMemorySessionService()
+        await session_service.create_session(
+            app_name="hunta", user_id="harness", session_id=run_id
+        )
+        runner = Runner(app_name="hunta", agent=agent, session_service=session_service)
+
+        try:
+            async for event in runner.run_async(
+                user_id="harness",
+                session_id=run_id,
+                new_message=types.Content(role="user", parts=[types.Part(text=task)]),
+                run_config=RunConfig(max_llm_calls=MAX_LLM_CALLS),
+            ):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            h.log("model_text", text=part.text)
+            break  # completed without a retryable error
+        except LlmCallsLimitExceededError as e:
+            # An outcome, not a crash.
+            hit_llm_cap = True
+            h.log("llm_cap_exceeded", error=str(e))
+            break
+        except Exception as e:  # noqa: BLE001 - classify then re-raise if not ours
+            if not _is_retryable_model_error(e):
+                h.transcript.close()
+                raise
+            if attempt < MAX_MODEL_ATTEMPTS:
+                delay = _backoff_delay(attempt)
+                logger.warning(
+                    "hunt %s: retryable model error (attempt %d/%d), retrying in "
+                    "%.1fs: %s", run_id, attempt, MAX_MODEL_ATTEMPTS, delay, e
+                )
+                h.log("model_retry", attempt=attempt, delay_s=round(delay, 1), error=str(e))
+                h.transcript.close()
+                await asyncio.sleep(delay)
+                continue
+            # Retries exhausted. Record the outage as a no-report OUTCOME rather
+            # than crashing the scheduled run -- the absence shows honestly in the
+            # Hunts UI, and the scheduler is not left retrying a 900s job.
+            model_unavailable = True
+            logger.error(
+                "hunt %s: model unavailable after %d attempts: %s",
+                run_id, attempt, e,
+            )
+            h.log("model_unavailable", attempts=attempt, error=str(e))
+            break
+
+    assert h is not None
     cost = {
         "run_id": run_id,
         "window": {"since": since, "until": until},
         "model": model,
         "queries": h.queries,
         "bytes_scanned": h.bytes_scanned,
+        "attempts": attempts,
         "budget_exhausted": h.budget_exhausted,
         "llm_cap_exceeded": hit_llm_cap,
+        "model_unavailable": model_unavailable,
         "produced_report": h.report is not None,
     }
     (h.out / "cost.json").write_text(json.dumps(cost, indent=2))

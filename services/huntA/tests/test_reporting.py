@@ -98,6 +98,16 @@ def test_report_to_doc_no_report_is_its_own_state():
     assert doc["produced_report"] is False
 
 
+def test_report_to_doc_model_unavailable_summary():
+    cost = {"queries": 0, "attempts": 4, "model_unavailable": True}
+    doc = reporting.report_to_doc(
+        run_id="r4", window={}, model="m", report=None, cost=cost
+    )
+    assert doc["verdict"] == "no_report"
+    assert "unavailable" in doc["summary"].lower()
+    assert "NOT examined" in doc["summary"]
+
+
 # --- should_notify: only surface things worth pursuing ------------------------
 
 

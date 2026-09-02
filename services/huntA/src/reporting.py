@@ -67,10 +67,17 @@ def report_to_doc(
         "created_at": datetime.now(timezone.utc),
     }
     if report is None:
-        # A run that never produced a report is a harness/prompt finding, not a
-        # clean bill of health -- record it as its own state, not as "quiet".
+        # A run that never produced a report is a harness/prompt/availability
+        # finding, not a clean bill of health -- record it as its own state.
         doc["verdict"] = "no_report"
-        doc["summary"] = "The hunt agent did not produce a report (see logs/transcript)."
+        if cost.get("model_unavailable"):
+            doc["summary"] = (
+                f"The model was unavailable (429 / resource exhausted) after "
+                f"{cost.get('attempts', '?')} attempts; no hunt was performed. "
+                "This window was NOT examined."
+            )
+        else:
+            doc["summary"] = "The hunt agent did not produce a report (see logs/transcript)."
         doc["findings"] = []
         return doc
 
