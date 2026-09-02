@@ -55,6 +55,7 @@ export const HuntDetail = ({ hunt, onClose }: { hunt: HuntReport | null; onClose
                                 <Meta label="Bytes scanned" value={fmtBytes(hunt.cost?.bytes_scanned)} />
                                 {hunt.cost?.budget_exhausted && <Meta label="⚠ Budget" value="exhausted (partial hunt)" />}
                                 {hunt.cost?.llm_cap_exceeded && <Meta label="⚠ LLM cap" value="hit (partial hunt)" />}
+                                {hunt.cost?.model_unavailable && <Meta label="⚠ Model" value={`unavailable — ${hunt.cost?.attempts ?? '?'} attempts (window NOT examined)`} />}
                             </div>
 
                             {/* Summary */}

@@ -35,6 +35,7 @@ export const SettingsPage = () => {
     const [enabled, setEnabled] = useState(false);
     const [webhookUrl, setWebhookUrl] = useState('');
     const [minSeverity, setMinSeverity] = useState('HIGH');
+    const [notifyHuntFailures, setNotifyHuntFailures] = useState(true);
     const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -48,6 +49,7 @@ export const SettingsPage = () => {
                     setEnabled(!!data.enabled);
                     setWebhookUrl(data.webhook_url || '');
                     setMinSeverity(data.min_severity || 'HIGH');
+                    setNotifyHuntFailures(data.notify_hunt_failures !== false);
                     setTemplate(data.template || DEFAULT_TEMPLATE);
                 }
             })
@@ -77,6 +79,7 @@ export const SettingsPage = () => {
                 enabled,
                 webhook_url: webhookUrl.trim(),
                 min_severity: minSeverity,
+                notify_hunt_failures: notifyHuntFailures,
                 template,
                 updated_by: user?.email || 'unknown',
                 updated_at: serverTimestamp(),
@@ -178,6 +181,22 @@ export const SettingsPage = () => {
                                         </select>
                                     </div>
                                 </div>
+
+                                <label className="flex items-center gap-3 cursor-pointer select-none">
+                                    <button
+                                        type="button"
+                                        onClick={() => setNotifyHuntFailures(v => !v)}
+                                        role="switch"
+                                        aria-checked={notifyHuntFailures}
+                                        className={`relative w-9 h-5 rounded-full transition-colors ${notifyHuntFailures ? 'bg-primary' : 'bg-border-color'}`}
+                                    >
+                                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${notifyHuntFailures ? 'left-[18px]' : 'left-0.5'}`} />
+                                    </button>
+                                    <span className="text-xs font-medium text-text-main">
+                                        Notify on failed hunts
+                                        <span className="text-muted font-normal"> — a scheduled hunt that didn't complete (e.g. model unavailable) means a window went unexamined.</span>
+                                    </span>
+                                </label>
 
                                 <div>
                                     <label className={labelClass}>Message template (Slack Block Kit JSON)</label>

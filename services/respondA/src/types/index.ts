@@ -116,8 +116,10 @@ export interface HuntReport {
     cost?: {
         queries?: number;
         bytes_scanned?: number;
+        attempts?: number;
         budget_exhausted?: boolean;
         llm_cap_exceeded?: boolean;
+        model_unavailable?: boolean;
     };
     transcript?: HuntTranscriptRecord[];
     produced_report?: boolean;

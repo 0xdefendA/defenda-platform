@@ -132,7 +132,7 @@ export const HuntsPage = () => {
                                 <tbody>
                                     {filtered.map((hunt) => {
                                         const meta = VERDICT_META[hunt.verdict] || VERDICT_META.no_report;
-                                        const partial = hunt.cost?.budget_exhausted || hunt.cost?.llm_cap_exceeded;
+                                        const partial = hunt.cost?.budget_exhausted || hunt.cost?.llm_cap_exceeded || hunt.cost?.model_unavailable;
                                         return (
                                             <tr
                                                 key={hunt.id}

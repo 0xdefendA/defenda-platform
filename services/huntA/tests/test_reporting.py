@@ -169,6 +169,29 @@ def test_notify_slack_silent_when_disabled_or_quiet():
     assert calls == []
 
 
+def test_notify_slack_posts_failure_on_no_report():
+    calls = []
+    cfg = {"enabled": True, "webhook_url": "https://hooks.slack.com/x"}
+    doc = {
+        "verdict": "no_report", "run_id": "r", "model": "m",
+        "window": {"since": "a", "until": "b"}, "findings": [],
+        "summary": "model unavailable; window NOT examined",
+        "cost": {"model_unavailable": True, "attempts": 4},
+    }
+    posted = reporting.notify_slack(cfg, doc, post=lambda url, body: calls.append(body))
+    assert posted is True
+    assert "did not complete" in str(calls[0]).lower()
+    assert "not examined" in str(calls[0]).lower()
+
+
+def test_notify_slack_failure_respects_opt_out():
+    calls = []
+    cfg = {"enabled": True, "webhook_url": "https://hooks.slack.com/x", "notify_hunt_failures": False}
+    doc = {"verdict": "no_report", "findings": [], "summary": "x", "window": {}, "cost": {}}
+    assert reporting.notify_slack(cfg, doc, post=lambda u, b: calls.append(b)) is False
+    assert calls == []
+
+
 def test_build_slack_blocks_shape():
     doc = {
         "verdict": "findings", "run_id": "r1", "model": "gemini",

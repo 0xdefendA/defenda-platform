@@ -162,20 +162,67 @@ def build_slack_blocks(doc: dict) -> dict:
     return {"blocks": blocks}
 
 
+def build_failure_blocks(doc: dict) -> dict:
+    """An operational heads-up when a scheduled hunt did not complete (verdict
+    'no_report' -- model unavailable, or the agent never produced a report). This
+    is the 'don't fail silently' message: a window that was NOT examined is its own
+    kind of alert."""
+    window = doc.get("window", {})
+    cost = doc.get("cost", {}) or {}
+    detail = "the agent did not produce a report"
+    if cost.get("model_unavailable"):
+        detail = f"model unavailable (429 / resource exhausted) after {cost.get('attempts', '?')} attempts"
+    return {
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "⚠️ Hunt did not complete"},
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"window {window.get('since', '?')} → {window.get('until', '?')} "
+                            f"was NOT examined · model {doc.get('model', '?')} · "
+                            f"run `{doc.get('run_id', '?')}`"
+                        ),
+                    }
+                ],
+            },
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*{detail}.* {doc.get('summary', '')}"}},
+        ]
+    }
+
+
 def notify_slack(
     cfg: dict,
     doc: dict,
     *,
     post: Callable[[str, dict], Any],
 ) -> bool:
-    """Post findings to Slack if enabled and above threshold. `post(url, json)` is
-    injected (requests.post in prod, a fake in tests). Returns whether it posted."""
+    """Post to Slack. Two cases:
+      - findings above the severity threshold -> the findings message
+      - a hunt that did NOT complete (verdict 'no_report') -> a failure heads-up,
+        so a scheduled hunt can't fail silently (gated by notify_hunt_failures,
+        default on)
+    `post(url, json)` is injected (requests.post in prod, a fake in tests).
+    Returns whether it posted."""
     if not cfg.get("enabled") or not cfg.get("webhook_url"):
         return False
-    if not should_notify(doc, cfg.get("min_severity", "HIGH")):
+
+    if doc.get("verdict") == "no_report":
+        if not cfg.get("notify_hunt_failures", True):
+            return False
+        payload = build_failure_blocks(doc)
+    elif should_notify(doc, cfg.get("min_severity", "HIGH")):
+        payload = build_slack_blocks(doc)
+    else:
         return False
+
     try:
-        post(cfg["webhook_url"], build_slack_blocks(doc))
+        post(cfg["webhook_url"], payload)
         return True
     except Exception as e:  # noqa: BLE001
         logger.error(f"Slack hunt notify failed: {e}")
