@@ -32,9 +32,9 @@ variable "hunt_agent_principals" {
 }
 
 variable "hunt_model" {
-  description = "Vertex Gemini model id the scheduled huntA service runs. Validate it resolves in your region before deploy."
+  description = "Vertex Gemini model id the scheduled huntA service runs."
   type        = string
-  default     = "gemini-3.7-flash"
+  default     = "gemini-3.8-flash"
 }
 
 variable "hunt_vertex_location" {
