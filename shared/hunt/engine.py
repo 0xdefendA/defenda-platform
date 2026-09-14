@@ -71,20 +71,35 @@ _RETRY_MAX_SECONDS = 120.0
 
 
 def _is_retryable_model_error(exc: BaseException) -> bool:
-    """True for transient model-availability errors (429 / 503 / UNAVAILABLE).
-    Deliberately signal-based rather than importing specific exception types,
-    because ADK/genai/api_core each surface these differently."""
-    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-    if code in (429, 503):
-        return True
-    text = f"{type(exc).__name__} {exc}".lower()
+    """True for transient model errors worth retrying. Signal-based rather than
+    importing specific exception types, because ADK / genai / api_core each
+    surface these differently (HTTP 429/500/503, or gRPC RESOURCE_EXHAUSTED=8 /
+    DEADLINE_EXCEEDED=4 / INTERNAL=13 / UNAVAILABLE=14).
+
+    NOTE: this only decides whether to RETRY. Even if it returns False, the
+    service's catch-all still records a no-report outcome -- a misclassified
+    error is a missed retry, never a silent failure."""
+    # HTTP-style and gRPC-style transient codes on any of the usual attributes.
+    transient = {429, 500, 503, 4, 8, 13, 14}
+    for attr in ("code", "status_code", "grpc_status_code"):
+        c = getattr(exc, attr, None)
+        if c in transient:
+            return True
+        cu = str(c).upper()
+        if "UNAVAILABLE" in cu or "RESOURCE_EXHAUSTED" in cu or "DEADLINE" in cu or "INTERNAL" in cu:
+            return True
+
+    text = f"{type(exc).__name__} {exc} {getattr(exc, 'message', '')}".lower()
     cause = getattr(exc, "__cause__", None)
     if cause:
         text += f" {cause}".lower()
     return any(
         n in text
-        for n in ("resource_exhausted", "resource exhausted", "429", "503",
-                  "unavailable", "rate limit")
+        for n in (
+            "resource_exhausted", "resource exhausted", "429", "503",
+            "unavailable", "currently unavailable", "rate limit",
+            "try again", "temporarily", "deadline exceeded", "internal error",
+        )
     )
 
 

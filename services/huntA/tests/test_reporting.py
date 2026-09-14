@@ -98,6 +98,28 @@ def test_report_to_doc_no_report_is_its_own_state():
     assert doc["produced_report"] is False
 
 
+def test_report_to_doc_generic_error_summary():
+    # The catch-all path: run_hunt raised something unexpected.
+    cost = {"error": "gRPC 14 The service is currently unavailable."}
+    doc = reporting.report_to_doc(
+        run_id="rE", window={}, model="m", report=None, cost=cost
+    )
+    assert doc["verdict"] == "no_report"
+    assert "failed to run" in doc["summary"].lower()
+    assert "NOT examined" in doc["summary"]
+
+
+def test_notify_slack_failure_message_includes_error():
+    calls = []
+    cfg = {"enabled": True, "webhook_url": "https://hooks.slack.com/x"}
+    doc = {
+        "verdict": "no_report", "run_id": "r", "model": "m", "window": {},
+        "findings": [], "summary": "failed", "cost": {"error": "code 14 unavailable"},
+    }
+    assert reporting.notify_slack(cfg, doc, post=lambda u, b: calls.append(b)) is True
+    assert "errored" in str(calls[0]).lower()
+
+
 def test_report_to_doc_model_unavailable_summary():
     cost = {"queries": 0, "attempts": 4, "model_unavailable": True}
     doc = reporting.report_to_doc(

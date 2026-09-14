@@ -79,36 +79,42 @@ async def handle_run(request: Request):
 
     logger.info(f"hunt {run_id}: {since} .. {until} model={HUNT_MODEL}")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        result = await run_hunt(
-            project=PROJECT_ID,
-            since=since,
-            until=until,
-            run_id=run_id,
-            catalog_text=CATALOG_PATH.read_text(),
-            out_dir=Path(tmp) / run_id,
-            model=HUNT_MODEL,
+    # SAFETY NET: a scheduled hunt must NEVER fail silently. run_hunt already
+    # turns exhausted retries into a no-report outcome, but ANY other exception
+    # (a model error we didn't classify, a BigQuery failure, an ADK/genai bug)
+    # would otherwise raise → 500 → no doc → invisible. So the whole run is
+    # wrapped: on any failure we still persist a no_report doc and notify.
+    # Chasing error strings is a losing game; guaranteeing a record is not.
+    records: list = []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = await run_hunt(
+                project=PROJECT_ID,
+                since=since,
+                until=until,
+                run_id=run_id,
+                catalog_text=CATALOG_PATH.read_text(),
+                out_dir=Path(tmp) / run_id,
+                model=HUNT_MODEL,
+            )
+        records = result.transcript or []
+        # Compact per-query log line so a run is greppable live.
+        for r in (r for r in records if r.get("kind") == "query_run"):
+            logger.info(
+                f"hunt {run_id} q{r.get('n')}: rows={r.get('row_count')} "
+                f"truncated={r.get('truncated')} :: {r.get('sql', '')[:500]}"
+            )
+        doc = reporting.report_to_doc(
+            run_id=run_id, window=window, model=HUNT_MODEL,
+            report=result.report, cost=result.cost, transcript=records,
+        )
+    except Exception as e:  # noqa: BLE001 - the point is to catch everything
+        logger.exception(f"hunt {run_id} crashed")
+        doc = reporting.report_to_doc(
+            run_id=run_id, window=window, model=HUNT_MODEL,
+            report=None, cost={"error": str(e)[:500]}, transcript=[],
         )
 
-    # The transcript is returned in memory (not read back from the temp dir) and
-    # persisted onto the report doc. Also log a compact per-query line so a run is
-    # greppable live -- one line each, not a single blank multi-line blob.
-    records = result.transcript or []
-    query_records = [r for r in records if r.get("kind") == "query_run"]
-    for r in query_records:
-        logger.info(
-            f"hunt {run_id} q{r.get('n')}: rows={r.get('row_count')} "
-            f"truncated={r.get('truncated')} :: {r.get('sql', '')[:500]}"
-        )
-
-    doc = reporting.report_to_doc(
-        run_id=run_id,
-        window=window,
-        model=HUNT_MODEL,
-        report=result.report,
-        cost=result.cost,
-        transcript=records,
-    )
     if fs_client:
         reporting.persist_report(fs_client, doc)
 
@@ -119,8 +125,7 @@ async def handle_run(request: Request):
 
     logger.info(
         f"hunt {run_id} done: verdict={doc['verdict']} "
-        f"findings={len(doc['findings'])} queries={result.cost.get('queries')} "
-        f"records={len(records)} notified={notified}"
+        f"findings={len(doc['findings'])} records={len(records)} notified={notified}"
     )
     return {
         "status": "ok",
@@ -128,5 +133,4 @@ async def handle_run(request: Request):
         "verdict": doc["verdict"],
         "findings": len(doc["findings"]),
         "notified": notified,
-        "cost": result.cost,
     }

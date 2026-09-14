@@ -76,6 +76,11 @@ def report_to_doc(
                 f"{cost.get('attempts', '?')} attempts; no hunt was performed. "
                 "This window was NOT examined."
             )
+        elif cost.get("error"):
+            doc["summary"] = (
+                f"The hunt failed to run and did not complete: {cost.get('error')}. "
+                "This window was NOT examined."
+            )
         else:
             doc["summary"] = "The hunt agent did not produce a report (see logs/transcript)."
         doc["findings"] = []
@@ -172,6 +177,8 @@ def build_failure_blocks(doc: dict) -> dict:
     detail = "the agent did not produce a report"
     if cost.get("model_unavailable"):
         detail = f"model unavailable (429 / resource exhausted) after {cost.get('attempts', '?')} attempts"
+    elif cost.get("error"):
+        detail = f"hunt errored: {str(cost.get('error'))[:300]}"
     return {
         "blocks": [
             {

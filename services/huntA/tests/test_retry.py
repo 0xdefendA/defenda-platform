@@ -53,6 +53,17 @@ def test_retryable_on_429_and_503():
     assert is_retryable(Exception("RESOURCE_EXHAUSTED"))
 
 
+def test_retryable_on_grpc_code_14_unavailable():
+    # The real incident: gRPC code 14, "The service is currently unavailable."
+    is_retryable = HELPERS["_is_retryable_model_error"]
+    assert is_retryable(Coded("The service is currently unavailable.", code=14))
+    assert is_retryable(Exception("The service is currently unavailable."))
+    # other gRPC transients
+    assert is_retryable(Coded("deadline", code=4))
+    assert is_retryable(Coded("resource exhausted", code=8))
+    assert is_retryable(Coded("internal", code=13))
+
+
 def test_not_retryable_on_other_errors():
     is_retryable = HELPERS["_is_retryable_model_error"]
     assert not is_retryable(Coded("bad request", code=400))
