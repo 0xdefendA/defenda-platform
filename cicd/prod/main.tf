@@ -395,6 +395,12 @@ resource "google_cloud_run_v2_service" "huntA_service" {
         name  = "HUNT_MODEL"
         value = var.hunt_model
       }
+      # Per-run query budget (runaway guard). Raise if hunts routinely report
+      # 'partial / budget exhausted'; lower to cap cost.
+      env {
+        name  = "HUNT_MAX_QUERIES"
+        value = tostring(var.hunt_max_queries)
+      }
       # OIDC caller verification: only the scheduler SA is accepted.
       env {
         name  = "PUSH_SA_EMAIL"

@@ -43,6 +43,12 @@ variable "hunt_vertex_location" {
   default     = "global"
 }
 
+variable "hunt_max_queries" {
+  description = "Per-run BigQuery query budget for huntA (runaway guard, not a hunt-shaping limit). Raise if hunts routinely report 'partial / budget exhausted'."
+  type        = number
+  default     = 25
+}
+
 # Sensitive variables now fetched directly from Secret Manager by Cloud Build
 
 variable "firebase_messaging_sender_id" {
