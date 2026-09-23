@@ -25,7 +25,7 @@ from oidc import verify_push_token
 
 # The shared engine holds the proven agent loop. Imported here so the scheduled
 # service runs exactly what phase 2b proved locally.
-from shared.hunt.engine import DEFAULT_MODEL, run_hunt
+from shared.hunt.engine import DEFAULT_MODEL, MAX_QUERIES as DEFAULT_MAX_QUERIES, run_hunt
 
 app = FastAPI(title="huntA", description="Scheduled AI threat hunts for defendA")
 
@@ -39,6 +39,10 @@ HUNT_MODEL = os.environ.get("HUNT_MODEL", DEFAULT_MODEL)
 # Look-back window per run. Twice-daily × 12h = continuous coverage with overlap
 # safety if a run is late.
 LOOKBACK_HOURS = int(os.environ.get("HUNT_LOOKBACK_HOURS", "12"))
+# Per-run query budget (runaway guard, not a hunt-shaping limit). Tunable without
+# a redeploy; 0/unset uses the engine default.
+_max_q = os.environ.get("HUNT_MAX_QUERIES")
+MAX_QUERIES = int(_max_q) if _max_q else None
 
 # The catalog is bundled into the container next to the source (see Dockerfile).
 CATALOG_PATH = Path(__file__).resolve().parent / "hunting_schema.md"
@@ -96,6 +100,7 @@ async def handle_run(request: Request):
                 catalog_text=CATALOG_PATH.read_text(),
                 out_dir=Path(tmp) / run_id,
                 model=HUNT_MODEL,
+                max_queries=MAX_QUERIES or DEFAULT_MAX_QUERIES,
             )
         records = result.transcript or []
         # Compact per-query log line so a run is greppable live.

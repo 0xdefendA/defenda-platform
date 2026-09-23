@@ -19,7 +19,7 @@ def _load_pure_helpers():
     import ast
 
     tree = ast.parse(src)
-    wanted = {"_is_retryable_model_error", "_backoff_delay",
+    wanted = {"_is_retryable_model_error", "_backoff_delay", "_query_error_response",
               "MAX_MODEL_ATTEMPTS", "_RETRY_BASE_SECONDS", "_RETRY_MAX_SECONDS"}
     keep = []
     for node in tree.body:
@@ -69,6 +69,23 @@ def test_not_retryable_on_other_errors():
     assert not is_retryable(Coded("bad request", code=400))
     assert not is_retryable(ValueError("No API key was provided."))
     assert not is_retryable(Exception("permission denied"))
+
+
+def test_query_error_hands_back_and_hints_json():
+    resp = HELPERS["_query_error_response"](
+        "Grouping by expressions of type JSON is not allowed at [9:10]"
+    )
+    assert resp["status"] == "error"
+    # actionable: tells the agent to fix and continue, not that it's fatal
+    assert "not fatal" in resp["error"].lower()
+    # JSON-specific hint present
+    assert "json_value" in resp["error"].lower()
+
+
+def test_query_error_no_json_hint_for_other_errors():
+    resp = HELPERS["_query_error_response"]("Unrecognized name: foo at [2:5]")
+    assert resp["status"] == "error"
+    assert "json_value" not in resp["error"].lower()
 
 
 def test_backoff_grows_and_is_bounded():

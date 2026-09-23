@@ -115,6 +115,7 @@ export interface HuntReport {
     model: string;
     cost?: {
         queries?: number;
+        max_queries?: number;
         bytes_scanned?: number;
         attempts?: number;
         budget_exhausted?: boolean;

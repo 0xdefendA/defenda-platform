@@ -51,7 +51,7 @@ export const HuntDetail = ({ hunt, onClose }: { hunt: HuntReport | null; onClose
                             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
                                 <Meta label="Window" value={`${hunt.window?.since ?? '?'} → ${hunt.window?.until ?? '?'}`} />
                                 <Meta label="Model" value={hunt.model} />
-                                <Meta label="Queries run" value={String(hunt.cost?.queries ?? '—')} />
+                                <Meta label="Queries run" value={hunt.cost?.max_queries ? `${hunt.cost?.queries ?? 0} / ${hunt.cost.max_queries}` : String(hunt.cost?.queries ?? '—')} />
                                 <Meta label="Bytes scanned" value={fmtBytes(hunt.cost?.bytes_scanned)} />
                                 {hunt.cost?.budget_exhausted && <Meta label="⚠ Budget" value="exhausted (partial hunt)" />}
                                 {hunt.cost?.llm_cap_exceeded && <Meta label="⚠ LLM cap" value="hit (partial hunt)" />}

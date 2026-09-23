@@ -108,13 +108,44 @@ def _backoff_delay(attempt: int) -> float:
     base = _RETRY_BASE_SECONDS * (3 ** (attempt - 1))
     return min(base, _RETRY_MAX_SECONDS) + random.uniform(0, 5)
 
-# Budgets. Hitting one is a RECORDED OUTCOME, not an exception -- "burned 12 queries
-# and found nothing" is a genuinely useful result and must not look like a crash.
-MAX_QUERIES = 12
+
+def _query_error_response(error_msg: str) -> dict:
+    """Turn a BigQuery query error into a tool response the agent can act on.
+    The most common trap is grouping/filtering a `details` JSON subfield directly
+    (BigQuery rejects GROUP BY on JSON), so hint at JSON_VALUE when relevant."""
+    hint = ""
+    if "json" in error_msg.lower():
+        hint = (
+            " Hint: `details` is a JSON column -- to filter, group by, or select a "
+            "subfield, wrap it in JSON_VALUE(details.<field>) "
+            "(e.g. JSON_VALUE(details.extra_info)), which returns a STRING you can "
+            "GROUP BY."
+        )
+    return {
+        "status": "error",
+        "error": (
+            f"Query failed: {error_msg}.{hint} Fix the SQL and try again -- a "
+            "malformed query is not fatal, and does not count against your findings."
+        ),
+    }
+
+# Budgets. Hitting one is a RECORDED OUTCOME, not an exception -- "burned the query
+# budget and found nothing" is a genuinely useful result and must not look like a
+# crash. MAX_QUERIES is the DEFAULT; run_hunt takes an override so the service can
+# tune it (HUNT_MAX_QUERIES env) without a redeploy. Sweeping ~dozens of projects
+# across feed_coverage + IAM + novelty + per-entity drill-downs + corroboration
+# wants more than a handful of queries, so the default is generous; the budget is a
+# runaway-guard, not a hunt-shaping constraint.
+MAX_QUERIES = 25
 MAX_BYTES_PER_QUERY = 20 * 2**30
 MAX_TOTAL_BYTES = 100 * 2**30
-# ADK makes a summarisation call after each tool result, so budget ~2x tool calls.
-MAX_LLM_CALLS = 2 * MAX_QUERIES + 4
+
+
+def _max_llm_calls(max_queries: int) -> int:
+    # ADK makes a summarisation call after each tool result, so budget ~2x tool
+    # calls, plus headroom for the error-handback retries a self-correcting agent
+    # makes on a bad query.
+    return 2 * max_queries + 6
 
 # Rows returned per query. The ADK BigQuery toolset defaults this to 50 and
 # TRUNCATES SILENTLY -- an agent would query a week of iam_changes, get 50 rows, and
@@ -166,11 +197,18 @@ class RunResult:
 
 class Harness:
     def __init__(
-        self, project: str, run_id: str, since: str, until: str, out_dir: Path
+        self,
+        project: str,
+        run_id: str,
+        since: str,
+        until: str,
+        out_dir: Path,
+        max_queries: int = MAX_QUERIES,
     ):
         self.project = project
         self.since = since
         self.until = until
+        self.max_queries = max_queries
         self.bq = bigquery.Client(project=project)
 
         self.out = out_dir
@@ -218,14 +256,24 @@ class Harness:
         # would under-count queries and log an empty transcript while the hunt
         # actually ran (observed: a run with queries but a blank transcript).
         self.queries += 1
-        job = self.bq.query(
-            sql,
-            job_config=bigquery.QueryJobConfig(
-                maximum_bytes_billed=MAX_BYTES_PER_QUERY,
-                use_query_cache=False,
-            ),
-        )
-        rows = [dict(r) for r in job.result(max_results=MAX_ROWS + 1)]
+        try:
+            job = self.bq.query(
+                sql,
+                job_config=bigquery.QueryJobConfig(
+                    maximum_bytes_billed=MAX_BYTES_PER_QUERY,
+                    use_query_cache=False,
+                ),
+            )
+            rows = [dict(r) for r in job.result(max_results=MAX_ROWS + 1)]
+        except Exception as e:  # noqa: BLE001 - hand the error back, don't crash
+            # A malformed query (bad SQL, JSON GROUP BY, etc.) is the agent's to
+            # FIX, not a reason to fatal the hunt. Return the BigQuery error as a
+            # tool response so the model can correct its SQL and continue -- same
+            # posture as write_report's validation errors. Still counts against
+            # the query budget above, so a loop of bad SQL is bounded.
+            self.log("query_error", n=self.queries, sql=sql, error=str(e))
+            return _query_error_response(str(e))
+
         truncated = len(rows) > MAX_ROWS
         rows = rows[:MAX_ROWS]
 
@@ -294,7 +342,7 @@ class Harness:
 
         sql = args.get("sql", "")
 
-        if self.queries >= MAX_QUERIES or self.bytes_scanned >= MAX_TOTAL_BYTES:
+        if self.queries >= self.max_queries or self.bytes_scanned >= MAX_TOTAL_BYTES:
             self.budget_exhausted = True
             self.log("budget_exhausted", queries=self.queries, bytes=self.bytes_scanned)
             return {
@@ -426,6 +474,7 @@ async def run_hunt(
     out_dir: Path,
     model: str = DEFAULT_MODEL,
     skill_body: Optional[str] = None,
+    max_queries: int = MAX_QUERIES,
 ) -> RunResult:
     """Run one hunt over [since, until). Returns the report (or None if the agent
     never produced one) plus a cost dict. Never raises for a capped run -- hitting
@@ -461,7 +510,7 @@ async def run_hunt(
         attempts = attempt
         # Fresh harness per attempt: opening the transcript with "w" truncates any
         # partial transcript from a failed attempt, so the final one is clean.
-        h = Harness(project, run_id, since, until, out_dir)
+        h = Harness(project, run_id, since, until, out_dir, max_queries=max_queries)
         if skill_body:
             h.log("skill_loaded", injected_chars=len(skill_body))
 
@@ -485,7 +534,7 @@ async def run_hunt(
                 user_id="harness",
                 session_id=run_id,
                 new_message=types.Content(role="user", parts=[types.Part(text=task)]),
-                run_config=RunConfig(max_llm_calls=MAX_LLM_CALLS),
+                run_config=RunConfig(max_llm_calls=_max_llm_calls(max_queries)),
             ):
                 if event.content and event.content.parts:
                     for part in event.content.parts:
@@ -528,6 +577,7 @@ async def run_hunt(
         "window": {"since": since, "until": until},
         "model": model,
         "queries": h.queries,
+        "max_queries": max_queries,
         "bytes_scanned": h.bytes_scanned,
         "attempts": attempts,
         "budget_exhausted": h.budget_exhausted,
