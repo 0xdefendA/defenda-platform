@@ -86,7 +86,12 @@ def _is_retryable_model_error(exc: BaseException) -> bool:
         if c in transient:
             return True
         cu = str(c).upper()
-        if "UNAVAILABLE" in cu or "RESOURCE_EXHAUSTED" in cu or "DEADLINE" in cu or "INTERNAL" in cu:
+        if (
+            "UNAVAILABLE" in cu
+            or "RESOURCE_EXHAUSTED" in cu
+            or "DEADLINE" in cu
+            or "INTERNAL" in cu
+        ):
             return True
 
     text = f"{type(exc).__name__} {exc} {getattr(exc, 'message', '')}".lower()
@@ -96,9 +101,17 @@ def _is_retryable_model_error(exc: BaseException) -> bool:
     return any(
         n in text
         for n in (
-            "resource_exhausted", "resource exhausted", "429", "503",
-            "unavailable", "currently unavailable", "rate limit",
-            "try again", "temporarily", "deadline exceeded", "internal error",
+            "resource_exhausted",
+            "resource exhausted",
+            "429",
+            "503",
+            "unavailable",
+            "currently unavailable",
+            "rate limit",
+            "try again",
+            "temporarily",
+            "deadline exceeded",
+            "internal error",
         )
     )
 
@@ -129,6 +142,7 @@ def _query_error_response(error_msg: str) -> dict:
         ),
     }
 
+
 # Budgets. Hitting one is a RECORDED OUTCOME, not an exception -- "burned the query
 # budget and found nothing" is a genuinely useful result and must not look like a
 # crash. MAX_QUERIES is the DEFAULT; run_hunt takes an override so the service can
@@ -146,6 +160,7 @@ def _max_llm_calls(max_queries: int) -> int:
     # calls, plus headroom for the error-handback retries a self-correcting agent
     # makes on a bad query.
     return 2 * max_queries + 6
+
 
 # Rows returned per query. The ADK BigQuery toolset defaults this to 50 and
 # TRUNCATES SILENTLY -- an agent would query a week of iam_changes, get 50 rows, and
@@ -518,10 +533,17 @@ async def run_hunt(
             name="hunter",
             # Gemini is ADK-native: a plain model string, no wrapper class.
             model=model,
-            instruction=INSTRUCTION.format(catalog=catalog_text, skill_block=skill_block),
+            instruction=INSTRUCTION.format(
+                catalog=catalog_text, skill_block=skill_block
+            ),
             tools=[h.query_hunting_schema, h.write_report],
             before_tool_callback=h.before_tool,
             after_tool_callback=h.after_tool,
+            generate_content_config=types.GenerateContentConfig(
+                http_options=types.HttpOptions(
+                    retry_options=types.HttpRetryOptions(initial_delay=2, attempts=5),
+                ),
+            ),
         )
         session_service = InMemorySessionService()
         await session_service.create_session(
@@ -554,9 +576,19 @@ async def run_hunt(
                 delay = _backoff_delay(attempt)
                 logger.warning(
                     "hunt %s: retryable model error (attempt %d/%d), retrying in "
-                    "%.1fs: %s", run_id, attempt, MAX_MODEL_ATTEMPTS, delay, e
+                    "%.1fs: %s",
+                    run_id,
+                    attempt,
+                    MAX_MODEL_ATTEMPTS,
+                    delay,
+                    e,
                 )
-                h.log("model_retry", attempt=attempt, delay_s=round(delay, 1), error=str(e))
+                h.log(
+                    "model_retry",
+                    attempt=attempt,
+                    delay_s=round(delay, 1),
+                    error=str(e),
+                )
                 h.transcript.close()
                 await asyncio.sleep(delay)
                 continue
@@ -566,7 +598,9 @@ async def run_hunt(
             model_unavailable = True
             logger.error(
                 "hunt %s: model unavailable after %d attempts: %s",
-                run_id, attempt, e,
+                run_id,
+                attempt,
+                e,
             )
             h.log("model_unavailable", attempts=attempt, error=str(e))
             break
