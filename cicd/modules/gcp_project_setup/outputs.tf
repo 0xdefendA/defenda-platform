@@ -8,6 +8,11 @@ output "hunta_agent_sa_email" {
   value       = google_service_account.hunta_agent.email
 }
 
+output "hunta_runner_sa_email" {
+  description = "The scheduled huntA Cloud Run service identity (read-only BigQuery + Vertex, plus datastore.user for persisting reports)."
+  value       = google_service_account.hunta_runner.email
+}
+
 output "project_number" {
   description = "The project number of the GCP project."
   value       = data.google_project.project.number
