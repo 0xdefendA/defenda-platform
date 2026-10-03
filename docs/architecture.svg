@@ -222,8 +222,8 @@
   <text x="46" y="862" class="t">score_hunt.py: recall, precision, fake citations</text>
   <text x="46" y="882" class="t">Blind windows: never told an attack exists</text>
   <text x="46" y="906" class="s">Gates every prompt, model, and skill change.</text>
-  <text x="46" y="924" class="s">Recall is the open question today; precision on</text>
-  <text x="46" y="940" class="s">benign windows already looks good.</text>
+  <text x="46" y="924" class="s">huntA already finds real attacks in operation;</text>
+  <text x="46" y="940" class="s">this turns that into a measured recall rate.</text>
 
   <rect x="440" y="772" width="390" height="190" rx="10" class="plan"/>
   <text x="456" y="798" class="h">Skill library</text>
