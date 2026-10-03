@@ -12,17 +12,20 @@ The platform uses GCP's fully managed, serverless offerings to handle unstructur
 * **Compute:** Cloud Run
 * **Data Lake (OLAP):** BigQuery (Native JSON columns, partitioned)
 * **State Management (OLTP):** Firestore Native
+* **AI:** Gemini on Vertex AI, driven by Google ADK
 * **CI/CD:** Cloud Build & Artifact Registry managed via Terraform
+
+![defendA architecture](docs/architecture.svg)
 
 ## Core Services
 
-The platform follows a microservices architecture divided into four core engines:
+The platform follows a microservices architecture divided into five core engines:
 
 1. 🟢 **`ingestA` (Data Lake Engine)**
    A high-throughput Cloud Run service triggered by Pub/Sub push subscriptions. It receives unstructured JSON logs, passes them through a flexible Python plugin architecture for normalization and enrichment, and streams the structured data directly into BigQuery.
 
 2. 🟢 **`alertA` (Alerting Engine)**
-   A continuous detection engine (every minute via Cloud Scheduler) that queries the BigQuery data lake against detection rules and writes alert state to Firestore. Supports three rule types:
+   A continuous detection engine (every 5 minutes via Cloud Scheduler) that queries the BigQuery data lake against detection rules and writes alert state to Firestore. Supports three rule types:
    * **threshold** — fires when matching events meet a count, grouped by an aggregation key (X failed logins by username)
    * **deadman** — fires when expected events are *missing* over a configurable lookback window (a quiet log pipeline); repeated triggers fold into one open alert with a hit counter rather than re-alerting every cycle
    * **sequence** — multi-slot rules where each slot (threshold or deadman) must trigger in order within a lifespan, with cross-slot templating (`{{slots.0.events.0.details.user_name}}`)
@@ -32,13 +35,17 @@ The platform follows a microservices architecture divided into four core engines
 3. 🟢 **`queryA` (Event Query Engine)**
    A read-only API that lets analysts explore the events table from the UI using the same criteria syntax detection rules use — so an exploratory query can be promoted directly into a detection. Runs as a least-privilege service account with query byte caps and criteria validation.
 
-4. 🟢 **`respondA` (User Interface)**
+4. 🟣 **`huntA` (AI Threat Hunter)**
+   A scheduled AI agent (06:00 and 18:00 UTC) that hunts the last 12 hours of activity across the whole environment. It runs Gemini on Vertex through Google ADK, queries the curated `defenda_hunting` views read-only, and writes a report: either `nothing_of_concern`, or findings that must cite real event IDs and argue why they are not benign. Reports land in Firestore and appear on the Hunts screen. Slack is notified only for findings above the severity threshold, or when a hunt fails to complete. See [AI Threat Hunting](#ai-threat-hunting-hunta) below.
+
+5. 🟢 **`respondA` (User Interface)**
    The analyst SPA (React + Firestore realtime):
    * **Alerts** — triage queue with claim/resolve/escalate, live presence, customizable columns (any event field; drag to reorder/resize; sortable), and client-side filter conditions
    * **Incidents** — incident workspace (timeline, theories, tasks) and a list with the same column/filter treatment
    * **Events** — query builder (structured or raw criteria), click-to-filter/add-column/copy from any event's JSON, and "create alert from this query"
    * **Detections** — live rules with enable/disable, edit, download-as-YAML, delete
-   * **Settings** — Slack notification configuration
+   * **Hunts** — every huntA run with its verdict, findings, and the full query trail behind the verdict; filter by verdict, search, paginate
+   * **Settings** — Slack notification configuration, including failed-hunt notifications
    * Analyst profiles (display name, title, avatar) that flow through presence indicators and assignee displays
 
 ## Detections as Code (and as Data)
@@ -69,10 +76,58 @@ tags:
 
 Optional fields: `lookback_minutes` (BigQuery time window, default 5 — deadman rules usually want longer), and for sequences `lifespan` (e.g. `"7 days"`) plus `slots`.
 
+## AI Threat Hunting (huntA)
+
+Rules catch what you predicted. huntA looks for what you didn't. Twice a day, an AI agent reviews the last 12 hours and reports anything that deserves a human's attention — or says plainly that nothing does.
+
+### How a hunt runs
+
+1. Cloud Scheduler calls `huntA /run` (OIDC-verified).
+2. The agent receives the hunting schema catalog (`docs/hunting_schema.md`) as its map. It never sees the raw events table.
+3. It has exactly two tools:
+   * `query_hunting_schema` — run a read-only `SELECT` against the `defenda_hunting` views, within a query and byte budget.
+   * `write_report` — end the hunt with a validated report. Each finding needs cited event IDs and a `why_not_benign` argument.
+4. The service saves the report, including the list of queries the agent ran, to `hunt_reports` and notifies Slack when appropriate.
+
+The agent loop lives in `shared/hunt/engine.py`. The scheduled service and the local harness (`tools/hunt_harness.py`) use the same engine, so what you test locally is what runs in production.
+
+### The hunting schema
+
+`defenda_hunting` is a set of BigQuery views shaped for hunting: `identity_events`, `entity_daily_activity`, `first_seens`, `feed_coverage`, and `iam_changes`. The views are authorized to read the data lake; the agent's identity can read only the views. [`docs/hunting_schema.md`](docs/hunting_schema.md) documents them. That file is also the agent's system prompt, so improving it improves both analyst and agent hunts.
+
+### Guardrails
+
+* **"Nothing of concern" is a passing result.** The agent is never told whether a window contains an attack. A report that invents a story about routine activity is worse than silence.
+* **Containment comes from the tool set and IAM, not the prompt.** Event content is treated as attacker-controlled. The agent cannot write anything: its query tool is read-only, and its identity can read only the hunting views.
+* **Transient model errors are retried.** 429 and 503 responses get exponential backoff.
+* **Bad SQL is returned to the agent so it can fix the query.** It does not end the hunt.
+* **Hunts never fail silently.** If a hunt can't complete for any reason, it still saves a `no_report` record and sends a Slack notification.
+* **Budgets cap each run.** A query budget and an LLM-call budget limit cost. Reaching a budget is recorded as an outcome, not treated as a crash.
+
+### Configuration
+
+Terraform variables in `cicd/prod` (set them in `terraform.tfvars`):
+
+| variable | default | purpose |
+| --- | --- | --- |
+| `hunt_model` | `gemini-3.8-flash` | Vertex Gemini model ID |
+| `hunt_vertex_location` | `global` | Vertex location for model calls |
+| `hunt_max_queries` | `25` | per-run query budget; raise it if hunts often report "budget exhausted" |
+| `hunt_agent_principals` | `[]` | people allowed to impersonate the read-only agent identity for local runs |
+
+New Gemini models often start with low Vertex quota. If hunts keep reporting "model unavailable", check the quota for that model or switch `hunt_model` to an established one.
+
+### Results in operation
+
+huntA has found several real attacks in production, each one surfaced as a cited finding on the Hunts screen. It also stays quiet on normal, busy windows, which is what keeps analysts reading its reports.
+
+What hasn't been measured yet is a **recall rate**: how many attacks of a given kind it finds, compared with how many happen. Real detections show it can find attacks; scored detonation runs (`docs/detonation_runbook.md`, `tools/score_hunt.py`) are how you get that number. They are also how you check that a model or prompt change hasn't made hunts worse. huntA complements the rules engine: rules catch known patterns within minutes, and hunts catch what nobody wrote a rule for. Design plans for the next steps are in `plans/`.
+
 ## Key Features
 
 * **Native JSON Querying:** BigQuery's native `JSON` column type means analysts query deeply nested logs with dot notation (e.g. `JSON_VALUE(details.eventname) = 'ConsoleLogin'`) — in ad-hoc queries and rule criteria alike.
 * **Query-to-Detection Workflow:** hunt in the Events screen, then save the same criteria as a live detection rule without leaving the UI.
+* **Scheduled AI Hunting:** an AI agent reviews every 12-hour window, shows its reasoning as a query trail, and stays quiet when there is nothing to report.
 * **Zero Partition Management:** BigQuery handles time-based partitioning automatically via the `utctimestamp` field, complete with a 425-day data retention auto-expiration policy.
 * **Extensible Plugin System:** `ingestA` features a priority-queue-based plugin system to easily add custom normalization (e.g., CloudTrail, GSuite) and enrichment (e.g., IP addresses, Threat Intel) rules to incoming logs on the fly.
 * **Real-time Collaboration:** Firestore listeners drive live alert/incident state, analyst presence indicators, and profile-aware assignee displays.
@@ -83,6 +138,7 @@ Optional fields: `lookback_minutes` (BigQuery time window, default 5 — deadman
 * `respondA` analysts authenticate via Firebase Auth; Firestore security rules gate all collections (presence and profile docs are writable only by their owner).
 * `queryA` verifies Firebase ID tokens per request and runs read-only against BigQuery with a bytes-billed cap.
 * `ingestA`/`alertA` verify Google-signed OIDC tokens from Pub/Sub and Cloud Scheduler (`PUSH_SA_EMAIL` env), so public invokability doesn't mean forgeable pushes.
+* `huntA` can be invoked only by its scheduler's service account (not `allUsers`), and it also verifies the OIDC token. It runs as `hunta-runner`: read access to the `defenda_hunting` views, Vertex AI, and Firestore for saving reports. The agent itself has no tool that can write. For local runs, the harness impersonates `hunta-agent`, which can only read the hunting views.
 
 ## Project Structure
 
@@ -91,12 +147,17 @@ defenda-platform/
 ├── cicd/
 │   ├── modules/gcp_project_setup/  # Core GCP infrastructure (BigQuery, Pub/Sub, IAM)
 │   └── prod/                       # Environment deployments (Cloud Build, Cloud Run)
+├── docs/                           # Hunting schema catalog, detonation runbook, architecture diagram
 ├── services/
 │   ├── ingestA/                    # Python/FastAPI log ingestion service
 │   ├── alertA/                     # Alerting detection engine (+ rules/*.yml)
 │   ├── queryA/                     # Ad-hoc event query API
+│   ├── huntA/                      # Scheduled AI threat-hunt service
 │   └── respondA/                   # Analyst response UI (React/Vite, Firestore)
-└── shared/                         # Shared models and schemas
+├── shared/
+│   ├── models/                     # Shared Pydantic models
+│   └── hunt/engine.py              # The hunt agent loop (used by huntA and the harness)
+└── tools/                          # Local hunt harness, fixture export, hunt scoring
 ```
 
 ## Getting Started
@@ -144,6 +205,7 @@ Python services (uv, Python 3.12+):
 cd services/ingestA/src && PYTHONPATH=. uv run pytest ../tests/
 cd services/alertA && PYTHONPATH=src uv run pytest tests/
 cd services/queryA && PYTHONPATH=src uv run pytest tests/
+cd services/huntA && PYTHONPATH=src uv run pytest tests/   # reporting, retry, error handling (no Vertex needed)
 ```
 
 respondA (vitest — criteria compilation, rule YAML generation, filters):
@@ -200,3 +262,21 @@ For the Events screen, also run queryA locally (port 8081 matches the default `V
 cd services/queryA
 PROJECT_ID=your-project-id uv run uvicorn main:app --app-dir src --reload --port 8081
 ```
+
+### Running a hunt locally
+
+Use the harness to work on hunt behavior. It runs the same engine as the scheduled service. Run it as the read-only agent identity, not as yourself; otherwise you query with your own broader permissions and the least-privilege setup isn't tested:
+
+```bash
+gcloud auth application-default login \
+  --impersonate-service-account=hunta-agent@your-project-id.iam.gserviceaccount.com
+
+export GOOGLE_GENAI_USE_VERTEXAI=TRUE
+export GOOGLE_CLOUD_PROJECT=your-project-id
+export GOOGLE_CLOUD_LOCATION=global
+
+python tools/hunt_harness.py --project your-project-id \
+  --since 2026-09-01T00:00:00Z --until 2026-09-01T12:00:00Z --run-id my-test
+```
+
+Output goes to `hunt_runs/<run-id>/` (`report.json`, `transcript.jsonl`, `cost.json`). Score a run against a detonation fixture with `tools/score_hunt.py`.

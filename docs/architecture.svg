@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1700 1100" width="1700" height="1100" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/></marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0d9488"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+    <style>
+      .title { font-size: 24px; font-weight: 700; fill: #0f172a; }
+      .subtitle { font-size: 13.5px; fill: #475569; }
+      .col { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; fill: #64748b; }
+      .h { font-size: 14px; font-weight: 700; fill: #0f172a; }
+      .t { font-size: 11.5px; fill: #334155; }
+      .s { font-size: 10.5px; fill: #64748b; }
+      .m { font-size: 11px; fill: #334155; font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+      .lbl { font-size: 10px; fill: #475569; }
+      .pill { font-size: 9.5px; font-weight: 700; fill: #ffffff; letter-spacing: 0.6px; }
+      .src { fill: #ffffff; stroke: #64748b; stroke-width: 1.5; }
+      .det { fill: #eff6ff; stroke: #2563eb; stroke-width: 1.8; }
+      .ai { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.8; }
+      .store { fill: #f8fafc; stroke: #475569; stroke-width: 1.5; }
+      .ui { fill: #f0fdfa; stroke: #0d9488; stroke-width: 1.8; }
+      .plan { fill: #fafafa; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .eb { fill: none; stroke: #2563eb; stroke-width: 1.8; }
+      .ep { fill: none; stroke: #7c3aed; stroke-width: 1.8; }
+      .et { fill: none; stroke: #0d9488; stroke-width: 1.8; }
+      .eg { fill: none; stroke: #94a3b8; stroke-width: 1.6; stroke-dasharray: 5 4; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1700" height="1100" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="30" y="38" class="title">defendA platform — architecture and AI-assisted detection</text>
+  <text x="30" y="62" class="subtitle">Serverless GCP SIEM: collect → normalize → store → detect (deterministic rules + scheduled AI hunts) → respond</text>
+
+  <!-- Column headers -->
+  <text x="30" y="96" class="col">1 · COLLECT</text>
+  <text x="270" y="96" class="col">2 · INGEST</text>
+  <text x="520" y="96" class="col">3 · STORE</text>
+  <text x="810" y="96" class="col">4 · DETECT</text>
+  <text x="1150" y="96" class="col">5 · STATE</text>
+  <text x="1410" y="96" class="col">6 · RESPOND</text>
+
+  <!-- ========== 1 · COLLECT ========== -->
+  <rect x="30" y="120" width="200" height="70" rx="10" class="src"/>
+  <text x="44" y="145" class="h">Google Workspace</text>
+  <text x="44" y="164" class="t">Reports API</text>
+  <text x="44" y="180" class="s">collectA poller</text>
+
+  <rect x="30" y="210" width="200" height="80" rx="10" class="src"/>
+  <text x="44" y="235" class="h">GCP Audit Logs</text>
+  <text x="44" y="254" class="t">org-wide log sink</text>
+  <text x="44" y="270" class="s">Admin Activity + Data Access</text>
+
+  <rect x="30" y="315" width="200" height="60" rx="10" class="plan"/>
+  <text x="44" y="340" class="h" fill="#64748b">AWS CloudTrail</text>
+  <text x="44" y="359" class="s">planned · next per coverage map</text>
+
+  <!-- ========== 2 · INGEST ========== -->
+  <rect x="270" y="175" width="210" height="60" rx="10" class="det"/>
+  <text x="284" y="200" class="h">Pub/Sub</text>
+  <text x="284" y="220" class="m">defenda-event-ingest</text>
+
+  <rect x="270" y="275" width="210" height="125" rx="10" class="det"/>
+  <text x="284" y="300" class="h">ingestA</text>
+  <text x="284" y="320" class="t">Cloud Run · OIDC-verified push</text>
+  <text x="284" y="340" class="t">normalize → enrich plugins</text>
+  <text x="284" y="358" class="s">gcp_audit · google_admin</text>
+  <text x="284" y="374" class="s">ip_addresses · timestamps</text>
+  <text x="284" y="390" class="s">→ one event shape for every source</text>
+
+  <!-- ========== 3 · STORE ========== -->
+  <rect x="520" y="120" width="250" height="120" rx="10" class="store"/>
+  <text x="534" y="145" class="h">BigQuery data lake</text>
+  <text x="534" y="164" class="m">defenda_data_lake.events</text>
+  <text x="534" y="184" class="t">native JSON details column</text>
+  <text x="534" y="201" class="t">partitioned on utctimestamp</text>
+  <text x="534" y="218" class="t">425-day retention</text>
+
+  <rect x="520" y="290" width="250" height="175" rx="10" class="store"/>
+  <text x="534" y="315" class="h">defenda_hunting</text>
+  <text x="534" y="333" class="s">authorized views · the agent's map</text>
+  <text x="534" y="356" class="m">identity_events</text>
+  <text x="534" y="374" class="m">entity_daily_activity</text>
+  <text x="534" y="392" class="m">first_seens</text>
+  <text x="534" y="410" class="m">feed_coverage</text>
+  <text x="534" y="428" class="m">iam_changes</text>
+  <text x="534" y="452" class="s">documented in docs/hunting_schema.md</text>
+
+  <rect x="520" y="500" width="250" height="80" rx="10" class="ui"/>
+  <text x="534" y="525" class="h">queryA</text>
+  <text x="534" y="544" class="t">analyst ad-hoc query API</text>
+  <text x="534" y="561" class="s">Firebase ID token · read-only · byte cap</text>
+
+  <!-- ========== 4 · DETECT: alertA ========== -->
+  <rect x="810" y="110" width="300" height="205" rx="10" class="det"/>
+  <rect x="1005" y="120" width="95" height="18" rx="9" fill="#2563eb"/>
+  <text x="1052.5" y="133" class="pill" text-anchor="middle">DETERMINISTIC</text>
+  <text x="825" y="135" class="h">alertA — rules engine</text>
+  <text x="825" y="160" class="t">Cloud Scheduler · every 5 minutes</text>
+  <text x="825" y="178" class="t">/cron → Pub/Sub fan-out → /evaluate</text>
+  <text x="825" y="200" class="t">Types: threshold · deadman · sequence</text>
+  <text x="825" y="218" class="s">deadman: lookback window + hit-folding</text>
+  <text x="825" y="234" class="s">sequence: threshold or deadman slots</text>
+  <text x="825" y="256" class="t">Rules are YAML in two places:</text>
+  <text x="825" y="274" class="s">repo (code review) + Firestore (live from UI)</text>
+  <text x="825" y="296" class="s">→ alert docs · Slack above severity</text>
+
+  <!-- ========== 4 · DETECT: huntA ========== -->
+  <rect x="810" y="350" width="300" height="325" rx="10" class="ai"/>
+  <rect x="985" y="360" width="115" height="18" rx="9" fill="#7c3aed"/>
+  <text x="1042.5" y="373" class="pill" text-anchor="middle">AI · SHADOW MODE</text>
+  <text x="825" y="375" class="h">huntA — AI hunter</text>
+  <text x="825" y="398" class="t">Cloud Scheduler · 06:00 and 18:00 UTC</text>
+  <text x="825" y="415" class="s">hunts the last 12 hours, whole environment</text>
+
+  <rect x="825" y="428" width="270" height="118" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="838" y="448" class="t" font-weight="700">ADK agent · Gemini on Vertex</text>
+  <text x="838" y="466" class="m">query_hunting_schema</text>
+  <text x="848" y="482" class="s">SELECT only · views only · query budget</text>
+  <text x="838" y="502" class="m">write_report</text>
+  <text x="848" y="518" class="s">verdict · cited eventids · why_not_benign</text>
+  <text x="848" y="536" class="s">shared/hunt/engine.py (harness = service)</text>
+
+  <text x="825" y="568" class="t" font-weight="700">Guardrails</text>
+  <text x="825" y="586" class="s">✓ "nothing_of_concern" is a passing answer</text>
+  <text x="825" y="602" class="s">✓ 429 / 503 → exponential backoff retry</text>
+  <text x="825" y="618" class="s">✓ bad SQL → error handed back to self-correct</text>
+  <text x="825" y="634" class="s">✓ any crash → no_report + Slack, never silent</text>
+  <text x="825" y="656" class="s">runs as hunta-runner · agent tools cannot write</text>
+
+  <!-- ========== 5 · STATE ========== -->
+  <rect x="1150" y="110" width="220" height="360" rx="10" class="store"/>
+  <text x="1164" y="135" class="h">Firestore</text>
+  <text x="1164" y="153" class="s">realtime state for the UI</text>
+  <text x="1164" y="183" class="m">alerts</text>
+  <text x="1164" y="203" class="m">incidents · timeline</text>
+  <text x="1164" y="233" class="m">rules</text>
+  <text x="1164" y="249" class="s">live detections, read by alertA</text>
+  <text x="1164" y="279" class="m">settings</text>
+  <text x="1164" y="295" class="s">Slack webhook, thresholds</text>
+  <text x="1164" y="325" class="m">hunt_reports</text>
+  <text x="1164" y="341" class="s">verdict, findings, query trail</text>
+  <text x="1164" y="371" class="m">users · presence</text>
+  <text x="1164" y="387" class="s">profiles, who is looking</text>
+  <text x="1164" y="440" class="s">security rules: analyst read,</text>
+  <text x="1164" y="456" class="s">hunt_reports written by service only</text>
+
+  <rect x="1150" y="510" width="220" height="80" rx="10" class="ui"/>
+  <text x="1164" y="535" class="h">Slack</text>
+  <text x="1164" y="554" class="t">alerts above severity</text>
+  <text x="1164" y="571" class="s">hunt findings · failed hunts</text>
+
+  <!-- ========== 6 · RESPOND ========== -->
+  <rect x="1410" y="110" width="240" height="262" rx="10" class="ui"/>
+  <text x="1424" y="135" class="h">respondA — analyst UI</text>
+  <text x="1424" y="160" class="t">Alerts — triage, claim, escalate</text>
+  <text x="1424" y="180" class="t">Incidents — shared workspace</text>
+  <text x="1424" y="200" class="t">Events — query → detection</text>
+  <text x="1424" y="220" class="t">Detections — live rules</text>
+  <text x="1424" y="240" class="t">Hunts — verdict + query trail</text>
+  <text x="1424" y="260" class="t">Settings — Slack, failed hunts</text>
+  <text x="1424" y="290" class="s">columns, sort, filter, presence</text>
+  <text x="1424" y="308" class="s">React + Firestore listeners</text>
+  <text x="1424" y="340" class="s">Hunt it in Events, save it as a</text>
+  <text x="1424" y="356" class="s">live rule: one criteria syntax.</text>
+
+  <rect x="1410" y="420" width="240" height="80" rx="10" class="ui"/>
+  <text x="1424" y="447" class="h">Analyst</text>
+  <text x="1424" y="467" class="t">reviews findings and alerts</text>
+  <text x="1424" y="484" class="s">reads the query trail before trusting it</text>
+
+  <!-- ========== EDGES ========== -->
+  <!-- collect -> pubsub -->
+  <path d="M230 155 L250 155 L250 195 L266 195" class="eb" marker-end="url(#ab)"/>
+  <path d="M230 250 L250 250 L250 215 L266 215" class="eb" marker-end="url(#ab)"/>
+  <path d="M230 345 L266 345" class="eg" marker-end="url(#ag)"/>
+  <!-- pubsub -> ingestA -->
+  <path d="M375 235 L375 271" class="eb" marker-end="url(#ab)"/>
+  <text x="382" y="258" class="lbl">push · OIDC</text>
+  <!-- ingestA -> events -->
+  <path d="M480 300 L495 300 L495 185 L516 185" class="eb" marker-end="url(#ab)"/>
+  <!-- events -> hunting views -->
+  <path d="M645 240 L645 286" class="eb" marker-end="url(#ab)"/>
+  <text x="652" y="267" class="lbl">authorized views</text>
+  <!-- events -> queryA (left gutter) -->
+  <path d="M520 228 L509 228 L509 540 L516 540" class="et" marker-end="url(#at)"/>
+  <!-- events -> alertA -->
+  <path d="M770 175 L806 175" class="eb" marker-end="url(#ab)"/>
+  <!-- views -> huntA -->
+  <path d="M770 400 L806 400" class="ep" marker-end="url(#ap)"/>
+  <!-- alertA -> firestore alerts -->
+  <path d="M1110 165 L1146 165" class="eb" marker-end="url(#ab)"/>
+  <!-- firestore rules -> alertA -->
+  <path d="M1150 240 L1114 240" class="et" marker-end="url(#at)" stroke-dasharray="5 3"/>
+  <text x="1118" y="234" class="lbl">rules</text>
+  <!-- alertA -> slack -->
+  <path d="M1110 300 L1130 300 L1130 530 L1146 530" class="eb" marker-end="url(#ab)"/>
+  <!-- huntA -> firestore hunt_reports -->
+  <path d="M1110 440 L1146 440" class="ep" marker-end="url(#ap)"/>
+  <!-- huntA -> slack -->
+  <path d="M1110 570 L1146 570" class="ep" marker-end="url(#ap)"/>
+  <!-- firestore <-> respondA -->
+  <path d="M1374 200 L1406 200" class="et" marker-start="url(#at)" marker-end="url(#at)"/>
+  <text x="1375" y="193" class="lbl">live</text>
+  <!-- slack -> analyst -->
+  <path d="M1370 550 L1390 550 L1390 470 L1406 470" class="et" marker-end="url(#at)"/>
+  <!-- analyst <-> respondA -->
+  <path d="M1530 416 L1530 376" class="et" marker-start="url(#at)" marker-end="url(#at)"/>
+  <!-- queryA <-> respondA Events screen (bottom bus) -->
+  <path d="M645 584 L645 700 L1675 700 L1675 250 L1654 250" class="et" marker-start="url(#at)" marker-end="url(#at)"/>
+  <text x="880" y="694" class="lbl">Events screen ↔ queryA (Firebase ID token) — hunt by hand, then save the criteria as a live rule</text>
+
+  <!-- ========== ROADMAP ========== -->
+  <line x1="30" y1="728" x2="1670" y2="728" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="30" y="756" class="col">ROADMAP · WHERE THE AI GOES NEXT (PLANNED)</text>
+
+  <rect x="30" y="772" width="390" height="190" rx="10" class="plan"/>
+  <text x="46" y="798" class="h">Seed and eval loop</text>
+  <text x="46" y="822" class="t">stratus-red-team detonations in a sacrificial project</text>
+  <text x="46" y="842" class="t">→ fixtures labeled attack / operator / benign</text>
+  <text x="46" y="862" class="t">score_hunt.py: recall, precision, fake citations</text>
+  <text x="46" y="882" class="t">Blind windows: never told an attack exists</text>
+  <text x="46" y="906" class="s">Gates every prompt, model, and skill change.</text>
+  <text x="46" y="924" class="s">huntA already finds real attacks in operation;</text>
+  <text x="46" y="940" class="s">this turns that into a measured recall rate.</text>
+
+  <rect x="440" y="772" width="390" height="190" rx="10" class="plan"/>
+  <text x="456" y="798" class="h">Skill library</text>
+  <text x="456" y="822" class="t">Agents write SOPs from hunts that worked</text>
+  <text x="456" y="842" class="t">Humans review; frontmatter never reaches the agent</text>
+  <text x="456" y="862" class="t">Post-mortems propose revisions as diffs</text>
+  <text x="456" y="882" class="t">Promote only if fixtures don't regress</text>
+  <text x="456" y="906" class="s">requires: [feeds] skips a hunt whose data isn't</text>
+  <text x="456" y="922" class="s">flowing, instead of returning a false all-clear.</text>
+
+  <rect x="850" y="772" width="390" height="190" rx="10" class="plan"/>
+  <text x="866" y="798" class="h">triageA — AI first responder</text>
+  <text x="866" y="822" class="t">Runs on every new alert</text>
+  <text x="866" y="842" class="t">Context: who (role, VIP), history, related events</text>
+  <text x="866" y="862" class="t">Verdict + confidence + cited evidence</text>
+  <text x="866" y="882" class="t">Shadow mode first; opt-in auto-resolve per rule</text>
+  <text x="866" y="906" class="s">Analyst agree / disagree becomes eval data.</text>
+  <text x="866" y="922" class="s">Needs an identities collection (Workspace</text>
+  <text x="866" y="938" class="s">directory sync + aliases).</text>
+
+  <rect x="1260" y="772" width="410" height="190" rx="10" class="plan"/>
+  <text x="1276" y="798" class="h">Entity risk and attack progression</text>
+  <text x="1276" y="822" class="t">Rules and hunts emit signals, not pages</text>
+  <text x="1276" y="842" class="t">Per-identity ledger across six attack phases</text>
+  <text x="1276" y="862" class="t">Alert on velocity: new phases appearing fast</text>
+  <text x="1276" y="882" class="t">One deterministic alerting authority</text>
+  <text x="1276" y="906" class="s">A hallucinated tactic costs one weighted signal,</text>
+  <text x="1276" y="922" class="s">not a page. Coverage map: phases × sources.</text>
+
+  <!-- ========== LEGEND ========== -->
+  <line x1="30" y1="1000" x2="70" y2="1000" class="eb"/>
+  <text x="78" y="1004" class="t">deterministic pipeline and rules</text>
+  <line x1="300" y1="1000" x2="340" y2="1000" class="ep"/>
+  <text x="348" y="1004" class="t">AI hunting path</text>
+  <line x1="480" y1="1000" x2="520" y2="1000" class="et"/>
+  <text x="528" y="1004" class="t">analyst and UI</text>
+  <line x1="650" y1="1000" x2="690" y2="1000" class="eg"/>
+  <text x="698" y="1004" class="t">planned</text>
+
+  <text x="30" y="1040" class="t" font-weight="700">Design principles</text>
+  <text x="30" y="1062" class="s">Silence is a valid answer · containment lives in the tool set and IAM, not the prompt · never fail silently ·</text>
+  <text x="30" y="1080" class="s">detections as code and as data · hunt over curated views, not raw JSON · a verdict is only as good as the query trail behind it</text>
+</svg>
